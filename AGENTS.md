@@ -20,25 +20,40 @@ sf apex run test --class-name ChatBotControllerTest --target-org venkatachaitany
 - **Instance**: `chap-dev-ed.my.salesforce.com`
 - **Login**: `sf org login web --instance-url https://login.salesforce.com --set-default`
 
-## AI Providers (selectable in UI)
-All API keys stored in a single CMDT: `AI_Provider_Setting__mdt`. Create one record per provider (MasterLabel = provider name, Api_Key__c = key).
+## AI Providers (dynamic, OpenAI-compatible)
+All provider config lives in one CMDT: `AI_Provider_Setting__mdt`. Create one record per provider:
+- **MasterLabel**: provider display name (e.g. `Neuralwatt`, `DeepSeek`, `OpenRouter`)
+- **Api_Key__c**: bearer token for the provider
+- **Base_Url__c**: OpenAI-compatible base URL (code appends `/chat/completions` and `/models`)
 
-### OpenRouter
-- **API key**: CMDT record with MasterLabel `OpenRouter`
-- **Free model chain**: `nex-agi/nex-n2-pro:free` → `nvidia/nemotron-3-super-120b-a12b:free` → `google/gemma-4-31b-it:free` → `openrouter/free`
-- **Also available**: `deepseek/deepseek-chat`, `deepseek/deepseek-r1`, `anthropic/claude-3.5-haiku`, `google/gemini-2.0-flash-001`
+### To add a new provider
+1. Add a CMDT record (MasterLabel + API key + base URL)
+2. Add a `RemoteSiteSetting` for the base URL host
+3. Done — Apex and LWC pick it up automatically; no code changes needed
 
-### DeepSeek
-- **API key**: CMDT record with MasterLabel `DeepSeek` — key starts with `sk-`
-- **Models**: `deepseek-chat` (fast/Flash), `deepseek-reasoner` (R1 reasoning)
+### How models are loaded
+- `ChatBotService.fetchModelsList(baseUrl, apiKey)` calls `GET {baseUrl}/models` (standard OpenAI-compatible endpoint)
+- `ChatBotController.getAvailableModels()` iterates all CMDT records and returns `{providerName: [modelId, ...]}` as JSON
+- LWC uses first provider + first model as the default
+
+### Provider-specific extras (handled in `callOpenAiCompatible()`)
+- **OpenRouter**: sends `HTTP-Referer` + `X-Title` headers; free models chain fallback (`nex-agi/nex-n2-pro:free` → `nvidia/...` → `google/gemma-...` → `openrouter/free`)
+- **DeepSeek**: sends `user_id` (SHA-256 of `UserInfo.getUserId()`, truncated) for rate-limit privacy
+
+### Recommended provider base URLs
+| Provider | Base URL | Notes |
+|----------|----------|-------|
+| Neuralwatt | `https://api.neuralwatt.com/v1` | OpenAI-compatible, GLM/Kimi/Qwen models |
+| DeepSeek | `https://api.deepseek.com` | Note: no `/v1` suffix per their docs |
+| OpenRouter | `https://openrouter.ai/api/v1` | OpenAI-compatible, 300+ models |
 
 ### TODO: Upgrade to Named Credentials
-When org upgrades to API v64+, replace CMDT key storage with Named Credentials (ApiKey protocol). Create `DeepSeek_API` and `OpenRouter_API` NCs with:
+When org upgrades to API v64+, replace CMDT key storage with Named Credentials (ApiKey protocol). Create one NC per provider with:
 - Protocol: **API Key**
 - Generate Authorization Header: true  
 - API Key: `Bearer sk-xxx`
-- Apex: use `callout:DeepSeek_API` / `callout:OpenRouter_API`
-- Remove `lookupApiKey()` and `Authorization` header from `doAiPost()`
+- Apex: use `callout:<ProviderName>_API`
+- Remove `getProviderConfig()` and `Authorization` header from `doAiPost()`
 - **Timeout**: 12s per callout
 
 ## Salesforce Platform MCP Server (platform.sobject-all)

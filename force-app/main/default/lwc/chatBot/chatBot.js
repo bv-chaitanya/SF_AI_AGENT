@@ -5,10 +5,6 @@ import searchRecords from '@salesforce/apex/ChatBotController.searchRecords';
 import sendMessageDetailed from '@salesforce/apex/ChatBotController.sendMessageDetailed';
 import summarizeCurrentRecordDetailed from '@salesforce/apex/ChatBotController.summarizeCurrentRecordDetailed';
 
-const PROVIDERS = ['DeepSeek', 'OpenRouter'];
-const DEFAULT_PROVIDER = 'DeepSeek';
-const DEFAULT_MODEL = 'deepseek-chat';
-
 export default class ChatBot extends LightningElement {
     @api recordId;
     @track messages = [];
@@ -16,13 +12,10 @@ export default class ChatBot extends LightningElement {
     isSending = false;
     messageId = 0;
 
-    provider = DEFAULT_PROVIDER;
-    model = DEFAULT_MODEL;
-    modelsByProvider = {
-        'DeepSeek': ['deepseek-chat'],
-        'OpenRouter': ['deepseek/deepseek-chat']
-    };
-    modelsLoaded = true;
+    provider = '';
+    model = '';
+    modelsByProvider = {};
+    modelsLoaded = false;
     contextRecords = [];
     showSearch = false;
     searchQuery = '';
@@ -46,12 +39,21 @@ export default class ChatBot extends LightningElement {
     loadModels() {
         getAvailableModels()
             .then(result => {
-                this.modelsByProvider = JSON.parse(result);
-                if (!this.model || !this.modelsByProvider[this.provider]?.includes(this.model)) {
-                    this.model = this.defaultModelFor(this.provider);
+                const parsed = JSON.parse(result);
+                this.modelsByProvider = parsed;
+                const providers = Object.keys(parsed);
+                if (providers.length > 0) {
+                    if (!this.provider || !parsed[this.provider]) {
+                        this.provider = providers[0];
+                    }
+                    const models = parsed[this.provider];
+                    if (!this.model || !models.includes(this.model)) {
+                        this.model = models && models.length ? models[0] : '';
+                    }
                 }
+                this.modelsLoaded = true;
             })
-            .catch(() => {});
+            .catch(() => { this.modelsLoaded = true; });
     }
 
     defaultModelFor(prov) {
@@ -60,12 +62,11 @@ export default class ChatBot extends LightningElement {
     }
 
     get providerOptions() {
-        return (this.providers || PROVIDERS).map(p => ({ label: p, value: p }));
+        return Object.keys(this.modelsByProvider || {}).map(p => ({ label: p, value: p }));
     }
 
     get modelOptions() {
-        const models = (this.modelsByProvider && this.modelsByProvider[this.provider])
-            || this.modelsByProvider?.['DeepSeek'] || ['deepseek-chat'];
+        const models = (this.modelsByProvider && this.modelsByProvider[this.provider]) || [];
         return models.map(m => ({ label: m, value: m }));
     }
 

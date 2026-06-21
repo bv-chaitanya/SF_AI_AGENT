@@ -1,19 +1,12 @@
 public with sharing class ChatBotService {
 
-    private static final String OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-    private static final String DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions';
     private static final String MCP_SERVER_URL = 'callout:Salesforce_MCP/platform/mcp/v1/platform/sobject-all';
     private static final Integer HTTP_TIMEOUT = 60000;
     private static final Integer AI_TIMEOUT = 12000;
 
-    private static final List<String> OPENROUTER_FREE_MODELS = new List<String>{
-        'nex-agi/nex-n2-pro:free',
-        'nvidia/nemotron-3-super-120b-a12b:free',
-        'google/gemma-4-31b-it:free',
-        'openrouter/free'
-    };
-
     @TestVisible public static String apiKeyOverride;
+    @TestVisible public static String baseUrlOverride;
+    @TestVisible public static Map<String, List<String>> testModelsMap;
     @TestVisible public static String toolsListResponse;
     @TestVisible public static String toolCallResponse;
     @TestVisible public static String mcpInitResponse;
@@ -24,6 +17,7 @@ public with sharing class ChatBotService {
     private static String sessionId;
     private static String cachedToolsJson;
     private static List<Object> cachedTools;
+    private static Map<String, Map<String, String>> providerConfigCache;
 
     public static String executedToolName;
     public static String executedToolArguments;
@@ -33,6 +27,7 @@ public with sharing class ChatBotService {
     public static String activeModel;
     public static List<Object> activeTools;
     private static String activeApiKey;
+    private static String activeBaseUrl;
 
     public static void setActiveApiKey(String key) { activeApiKey = key; }
     public static String getActiveApiKey() { return activeApiKey; }
@@ -40,13 +35,35 @@ public with sharing class ChatBotService {
     public static String aiProvider;
     public static List<String> streamChunks;
 
+    public static Map<String, String> getProviderConfig(String provider) {
+        if (providerConfigCache != null && providerConfigCache.containsKey(provider)) {
+            return providerConfigCache.get(provider);
+        }
+        Map<String, String> config = new Map<String, String>();
+        if (apiKeyOverride != null) {
+            config.put('apiKey', apiKeyOverride);
+            config.put('baseUrl', baseUrlOverride != null ? baseUrlOverride : 'https://api.test.com');
+        } else {
+            List<AI_Provider_Setting__mdt> settings = [
+                SELECT Api_Key__c, Base_Url__c FROM AI_Provider_Setting__mdt
+                WHERE MasterLabel = :provider LIMIT 1
+            ];
+            if (!settings.isEmpty()) {
+                config.put('apiKey', settings[0].Api_Key__c);
+                config.put('baseUrl', settings[0].Base_Url__c);
+            }
+        }
+        if (providerConfigCache == null) providerConfigCache = new Map<String, Map<String, String>>();
+        providerConfigCache.put(provider, config);
+        return config;
+    }
+
     public static String lookupApiKey(String provider) {
-        if (apiKeyOverride != null) return apiKeyOverride;
-        List<AI_Provider_Setting__mdt> settings = [
-            SELECT Api_Key__c FROM AI_Provider_Setting__mdt
-            WHERE MasterLabel = :provider LIMIT 1
-        ];
-        return settings.isEmpty() ? null : settings[0].Api_Key__c;
+        return getProviderConfig(provider).get('apiKey');
+    }
+
+    public static String lookupBaseUrl(String provider) {
+        return getProviderConfig(provider).get('baseUrl');
     }
 
     public static String normalizeRecordId(String recordId) {
@@ -66,6 +83,36 @@ public with sharing class ChatBotService {
         aiModel = null;
         aiProvider = null;
         streamChunks = null;
+        providerConfigCache = null;
+    }
+
+    public static List<String> fetchModelsList(String baseUrl, String apiKey) {
+        List<String> models = new List<String>();
+        if (String.isBlank(baseUrl) || String.isBlank(apiKey)) return models;
+        try {
+            HttpRequest req = new HttpRequest();
+            req.setEndpoint(baseUrl + '/models');
+            req.setMethod('GET');
+            req.setHeader('Authorization', 'Bearer ' + apiKey);
+            req.setHeader('Accept', 'application/json');
+            req.setTimeout(AI_TIMEOUT);
+            HttpResponse res = new Http().send(req);
+            if (res.getStatusCode() < 200 || res.getStatusCode() >= 300) {
+                lastAiError = 'models HTTP ' + res.getStatusCode();
+                return models;
+            }
+            Map<String, Object> root = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
+            List<Object> data = (List<Object>) root.get('data');
+            if (data == null) return models;
+            for (Object m : data) {
+                Map<String, Object> mo = (Map<String, Object>) m;
+                String id = (String) mo.get('id');
+                if (String.isNotBlank(id)) models.add(id);
+            }
+        } catch (Exception e) {
+            lastAiError = 'fetchModels: ' + e.getMessage();
+        }
+        return models;
     }
 
     public static Boolean initMcp() {
@@ -151,11 +198,67 @@ public with sharing class ChatBotService {
         } catch (Exception e) { return jsonStr; }
     }
 
-    public static String callAi(String provider, String model, String apiKey,
+    public static String callAi(String provider, String model, String apiKey, String baseUrl,
             List<Map<String, Object>> messages, List<Object> tools) {
-        return provider == 'DeepSeek'
-            ? callDeepSeek(model, apiKey, messages, tools)
-            : callOpenRouter(model, apiKey, messages, tools);
+        return callOpenAiCompatible(provider, model, apiKey, baseUrl, messages, tools);
+    }
+
+    private static String callOpenAiCompatible(String provider, String model, String apiKey, String baseUrl,
+            List<Map<String, Object>> messages, List<Object> tools) {
+        lastAiError = null;
+        Boolean useStream = (tools == null || tools.isEmpty());
+        Boolean isDeepSeek = (provider == 'DeepSeek');
+        Boolean isOpenRouter = (provider == 'OpenRouter');
+
+        Map<String, Object> body = new Map<String, Object>{
+            'model' => model, 'messages' => messages,
+            'temperature' => 0.2, 'max_tokens' => 1024, 'stream' => useStream
+        };
+        if (isDeepSeek) {
+            body.put('user_id', 'sf-' + EncodingUtil.convertToHex(
+                Crypto.generateDigest('SHA-256', Blob.valueOf(UserInfo.getUserId()))
+            ).substring(0, 16));
+        }
+        if (tools != null && !tools.isEmpty()) { body.put('tools', tools); body.put('tool_choice', 'auto'); }
+
+        List<String> modelChain = isOpenRouter ? buildOpenRouterChain(model) : new List<String>{ model };
+        for (String m : modelChain) {
+            body.put('model', m);
+            try {
+                HttpResponse res = doAiPost(baseUrl + '/chat/completions', apiKey, body, isOpenRouter);
+                if (res.getStatusCode() >= 200 && res.getStatusCode() < 300) {
+                    if (useStream) {
+                        List<String> chunks = parseStreamChunks(res.getBody());
+                        String answer = joinChunks(chunks);
+                        if (String.isNotBlank(answer)) {
+                            aiModel = m; aiProvider = provider; streamChunks = chunks; return answer;
+                        }
+                        lastAiError = m + ' empty';
+                    } else if (String.isNotBlank(extractContentOrNull(res.getBody()))
+                        || parseNative(res.getBody()) != null) {
+                        aiModel = m; aiProvider = provider; return res.getBody();
+                    }
+                    lastAiError = m + ' empty';
+                } else {
+                    lastAiError = m + ' HTTP ' + res.getStatusCode() + fmtErr(res.getBody());
+                }
+            } catch (Exception e) { lastAiError = m + ': ' + e.getMessage(); }
+        }
+        return null;
+    }
+
+    private static List<String> buildOpenRouterChain(String model) {
+        List<String> freeModels = new List<String>{
+            'nex-agi/nex-n2-pro:free',
+            'nvidia/nemotron-3-super-120b-a12b:free',
+            'google/gemma-4-31b-it:free',
+            'openrouter/free'
+        };
+        Integer idx = freeModels.indexOf(model);
+        if (idx < 0) return new List<String>{ model };
+        List<String> chain = new List<String>();
+        for (Integer i = idx; i < freeModels.size(); i++) chain.add(freeModels[i]);
+        return chain;
     }
 
     public static List<McpToolCall> parseAllToolCalls(String responseBody) {
@@ -249,76 +352,6 @@ public with sharing class ChatBotService {
             if (key != null && key.toLowerCase() == name.toLowerCase()) return res.getHeader(key);
         }
         return null;
-    }
-
-    private static String callDeepSeek(String model, String apiKey,
-            List<Map<String, Object>> messages, List<Object> tools) {
-        lastAiError = null;
-        Boolean useStream = (tools == null || tools.isEmpty());
-
-        Map<String, Object> body = new Map<String, Object>{
-            'model' => model, 'messages' => messages,
-            'temperature' => 0.2, 'max_tokens' => 1024,
-            'stream' => useStream,
-            'user_id' => 'sf-' + EncodingUtil.convertToHex(
-                Crypto.generateDigest('SHA-256', Blob.valueOf(UserInfo.getUserId()))
-            ).substring(0, 16)
-        };
-        if (tools != null && !tools.isEmpty()) { body.put('tools', tools); body.put('tool_choice', 'auto'); }
-
-        try {
-            HttpResponse res = doAiPost(DEEPSEEK_URL, apiKey, body);
-            if (res.getStatusCode() < 200 || res.getStatusCode() >= 300) {
-                lastAiError = 'DS ' + model + ' HTTP ' + res.getStatusCode() + fmtErr(res.getBody());
-                return null;
-            }
-            aiModel = model; aiProvider = 'DeepSeek';
-            if (useStream) { streamChunks = parseStreamChunks(res.getBody()); return joinChunks(streamChunks); }
-            return res.getBody();
-        } catch (Exception e) { lastAiError = 'DS failed: ' + e.getMessage(); return null; }
-    }
-
-    private static String callOpenRouter(String model, String apiKey,
-            List<Map<String, Object>> messages, List<Object> tools) {
-        lastAiError = null;
-        Boolean useStream = (tools == null || tools.isEmpty());
-        List<String> toTry = buildModelChain(model);
-
-        for (String m : toTry) {
-            Map<String, Object> body = new Map<String, Object>{
-                'model' => m, 'messages' => messages,
-                'temperature' => 0.2, 'max_tokens' => 1024, 'stream' => useStream
-            };
-            if (tools != null && !tools.isEmpty()) { body.put('tools', tools); body.put('tool_choice', 'auto'); }
-
-            try {
-                HttpResponse res = doAiPost(OPENROUTER_URL, apiKey, body, true);
-                if (res.getStatusCode() >= 200 && res.getStatusCode() < 300) {
-                    if (useStream) {
-                        List<String> chunks = parseStreamChunks(res.getBody());
-                        String answer = joinChunks(chunks);
-                        if (String.isNotBlank(answer)) {
-                            aiModel = m; aiProvider = 'OpenRouter'; streamChunks = chunks; return answer;
-                        }
-                    } else if (String.isNotBlank(extractContentOrNull(res.getBody()))
-                        || parseNative(res.getBody()) != null) {
-                        aiModel = m; aiProvider = 'OpenRouter'; return res.getBody();
-                    }
-                    lastAiError = m + ' empty';
-                } else {
-                    lastAiError = m + ' HTTP ' + res.getStatusCode() + fmtErr(res.getBody());
-                }
-            } catch (Exception e) { lastAiError = m + ': ' + e.getMessage(); }
-        }
-        return null;
-    }
-
-    private static List<String> buildModelChain(String model) {
-        Integer idx = OPENROUTER_FREE_MODELS.indexOf(model);
-        if (idx < 0) return new List<String>{ model };
-        List<String> chain = new List<String>();
-        for (Integer i = idx; i < OPENROUTER_FREE_MODELS.size(); i++) chain.add(OPENROUTER_FREE_MODELS[i]);
-        return chain;
     }
 
     private static HttpResponse doAiPost(String url, String apiKey, Map<String, Object> body) {

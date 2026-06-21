@@ -7,6 +7,7 @@ private class ChatBotControllerTest {
     @isTest
     static void sendMessage_returnsConfigError_whenNoApiKey() {
         ChatBotService.apiKeyOverride = null;
+        ChatBotService.baseUrlOverride = null;
         ChatBotService.lastMcpError = null;
         Test.startTest();
         String r = ChatBotController.sendMessage('Hello', PRV, OR_MODEL, null, null);
@@ -55,6 +56,30 @@ private class ChatBotControllerTest {
     }
 
     @isTest
+    static void getAvailableModels_returnsProviders() {
+        ChatBotService.testModelsMap = new Map<String, List<String>>{
+            'OpenRouter' => new List<String>{ 'deepseek/deepseek-chat' },
+            'DeepSeek' => new List<String>{ 'deepseek-chat' }
+        };
+        Test.startTest();
+        String r = ChatBotController.getAvailableModels();
+        Test.stopTest();
+        System.assert(r.contains('OpenRouter'), r);
+        System.assert(r.contains('DeepSeek'), r);
+    }
+
+    @isTest
+    static void fetchModelsList_parsesModelsResponse() {
+        Test.setMock(HttpCalloutMock.class, new ModelsMock());
+        Test.startTest();
+        List<String> models = ChatBotService.fetchModelsList('https://api.test.com', 'test-key');
+        Test.stopTest();
+        System.assertEquals(2, models.size(), 'Expected 2 models');
+        System.assert(models.contains('glm-5.2'), 'Should contain glm-5.2');
+        System.assert(models.contains('glm-5.2-fast'), 'Should contain glm-5.2-fast');
+    }
+
+    @isTest
     static void sendMessage_usesDeepSeekProvider() {
         setupTools();
         Test.setMock(HttpCalloutMock.class, new Mock('{"choices":[{"message":{"content":"DS says hi"}}]}'));
@@ -62,6 +87,16 @@ private class ChatBotControllerTest {
         String r = ChatBotController.sendMessage('Hello', 'DeepSeek', 'deepseek-chat', null, null);
         Test.stopTest();
         System.assertEquals('DS says hi', r);
+    }
+
+    @isTest
+    static void sendMessage_usesNeuralwattProvider() {
+        setupTools();
+        Test.setMock(HttpCalloutMock.class, new Mock('{"choices":[{"message":{"content":"NW says hi"}}]}'));
+        Test.startTest();
+        String r = ChatBotController.sendMessage('Hello', 'Neuralwatt', 'glm-5.2', null, null);
+        Test.stopTest();
+        System.assertEquals('NW says hi', r);
     }
 
     @isTest
@@ -85,17 +120,9 @@ private class ChatBotControllerTest {
         System.assert(r.contains('t1'), r);
     }
 
-    @isTest
-    static void getAvailableModels_returnsBoth() {
-        Test.startTest();
-        String r = ChatBotController.getAvailableModels();
-        Test.stopTest();
-        System.assert(r.contains('OpenRouter'), r);
-        System.assert(r.contains('DeepSeek'), r);
-    }
-
     private static void setupTools() {
         ChatBotService.apiKeyOverride = 'test-key';
+        ChatBotService.baseUrlOverride = 'https://api.test.com';
         ChatBotService.mcpSessionIdOverride = 'test-session';
         ChatBotService.toolsListResponse = '{"jsonrpc":"2.0","result":{"tools":[{"name":"query","description":"Query","inputSchema":{"type":"object"}}]}}';
     }
@@ -122,6 +149,15 @@ private class ChatBotControllerTest {
         public HttpResponse respond(HttpRequest r) {
             HttpResponse res = new HttpResponse();
             res.setStatusCode(500); res.setBody('error'); return res;
+        }
+    }
+
+    class ModelsMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest r) {
+            HttpResponse res = new HttpResponse();
+            res.setStatusCode(200);
+            res.setBody('{"data":[{"id":"glm-5.2"},{"id":"glm-5.2-fast"}]}');
+            return res;
         }
     }
 }

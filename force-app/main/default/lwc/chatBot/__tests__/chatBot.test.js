@@ -8,14 +8,14 @@ describe('c-chatBot', () => {
         }
     });
 
-    it('renders with default provider DeepSeek', () => {
+    it('renders with no hardcoded provider until models load', () => {
         const el = createElement('c-chatBot', { is: ChatBot });
         document.body.appendChild(el);
 
         return Promise.resolve().then(() => {
-            expect(el.provider).toBe('DeepSeek');
-            expect(el.model).toBe('deepseek-chat');
-            expect(el.modelsLoaded).toBe(true);
+            expect(el.provider).toBe('');
+            expect(el.model).toBe('');
+            expect(el.modelsLoaded).toBe(false);
         });
     });
 
