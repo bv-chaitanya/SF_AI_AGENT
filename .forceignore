@@ -1,0 +1,3 @@
+# Exclude Jest/Node test files from Salesforce deployment
+**/__tests__/**
+**/node_modules/**
