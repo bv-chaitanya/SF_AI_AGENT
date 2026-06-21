@@ -2,7 +2,7 @@ public with sharing class ChatBotService {
 
     private static final String MCP_SERVER_URL = 'callout:Salesforce_MCP/platform/mcp/v1/platform/sobject-all';
     private static final Integer HTTP_TIMEOUT = 60000;
-    private static final Integer AI_TIMEOUT = 12000;
+    private static final Integer AI_TIMEOUT = 30000;
 
     @TestVisible public static Map<String, List<String>> testModelsMap;
     @TestVisible public static String toolsListResponse;
@@ -195,7 +195,7 @@ public with sharing class ChatBotService {
 
         Map<String, Object> body = new Map<String, Object>{
             'model' => model, 'messages' => messages,
-            'temperature' => 0.2, 'max_tokens' => 1024, 'stream' => useStream
+            'temperature' => 0.2, 'max_tokens' => 2048, 'stream' => useStream
         };
         if (isDeepSeek) {
             body.put('user_id', 'sf-' + EncodingUtil.convertToHex(
@@ -274,6 +274,11 @@ public with sharing class ChatBotService {
 
     public static Map<String, Object> msg(String role, String content) {
         return new Map<String, Object>{ 'role' => role, 'content' => content };
+    }
+
+    public static String truncate(String text, Integer maxLen) {
+        if (text == null) return null;
+        return text.length() > maxLen ? text.substring(0, maxLen) + '\n...(truncated)' : text;
     }
 
     private static Map<String, Object> buildRpc(String method, Map<String, Object> params) {

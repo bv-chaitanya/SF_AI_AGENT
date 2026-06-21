@@ -111,7 +111,7 @@ public with sharing class ChatBotController {
 
         for (Integer turn = 0; turn < 5; turn++) {
             String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, tools);
-            if (body == null) return 'AI unavailable.';
+            if (body == null) return 'AI unavailable: ' + ChatBotService.lastAiError;
 
             List<ChatBotService.McpToolCall> tcs = ChatBotService.parseAllToolCalls(body);
             if (tcs.isEmpty()) return ChatBotService.extractContent(body);
@@ -125,12 +125,12 @@ public with sharing class ChatBotController {
                 ChatBotService.executedTools.add(new Map<String, String>{'name' => tc.name, 'arguments' => JSON.serialize(tc.arguments) });
 
                 msgs.add(new Map<String, Object>{'role' => 'assistant', 'content' => null, 'tool_calls' => new List<Map<String, Object>>{ new Map<String, Object>{'id' => tc.id, 'type' => 'function', 'function' => new Map<String, Object>{'name' => tc.name, 'arguments' => JSON.serialize(tc.arguments) } } } });
-                msgs.add(new Map<String, Object>{'role' => 'tool', 'tool_call_id' => tc.id, 'content' => result });
+                msgs.add(new Map<String, Object>{'role' => 'tool', 'tool_call_id' => tc.id, 'content' => ChatBotService.truncate(result, 8000) });
             }
         }
 
         String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, null);
-        return body != null ? ChatBotService.extractContent(body) : 'Action completed.';
+        return body != null ? ChatBotService.extractContent(body) : 'Action completed but AI could not summarize. Error: ' + ChatBotService.lastAiError;
     }
 
     private static String summarize(String recordId, String provider, String model) {
@@ -150,9 +150,9 @@ public with sharing class ChatBotController {
 
         List<Map<String, Object>> msgs = new List<Map<String, Object>>();
         msgs.add(ChatBotService.msg('system', 'Summarize this ' + obj + ' concisely.'));
-        msgs.add(ChatBotService.msg('user', 'Data:\n' + tr));
+        msgs.add(ChatBotService.msg('user', 'Data:\n' + ChatBotService.truncate(tr, 8000)));
         String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, null);
-        return body != null ? ChatBotService.extractContent(body) : 'Tool result: ' + tr;
+        return body != null ? ChatBotService.extractContent(body) : 'AI error: ' + ChatBotService.lastAiError + '\n\nTool result: ' + tr;
     }
 
     private static ChatBotService.ChatResponse buildResponse(String answer) {
