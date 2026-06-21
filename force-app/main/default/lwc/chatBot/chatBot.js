@@ -2,8 +2,7 @@ import { LightningElement, api, track } from 'lwc';
 import getAvailableModels from '@salesforce/apex/ChatBotController.getAvailableModels';
 import getRecordInfo from '@salesforce/apex/ChatBotController.getRecordInfo';
 import searchRecords from '@salesforce/apex/ChatBotController.searchRecords';
-import initChat from '@salesforce/apex/ChatBotController.initChat';
-import continueChat from '@salesforce/apex/ChatBotController.continueChat';
+import sendMessageDetailed from '@salesforce/apex/ChatBotController.sendMessageDetailed';
 import summarizeCurrentRecordDetailed from '@salesforce/apex/ChatBotController.summarizeCurrentRecordDetailed';
 
 const PROVIDERS = ['DeepSeek', 'OpenRouter'];
@@ -155,7 +154,7 @@ export default class ChatBot extends LightningElement {
 
         const summary = this.buildConversationSummary(text);
 
-        initChat({
+        sendMessageDetailed({
             userMessage: text,
             recordId: this.recordId,
             provider: this.provider,
@@ -163,44 +162,33 @@ export default class ChatBot extends LightningElement {
             conversationSummary: summary,
             contextRecordsJson: JSON.stringify(this.contextRecords)
         })
-        .then(result => this.handleChatStep(result))
+        .then(result => {
+            this.isSending = false;
+            if (result.usedTool && result.usedToolsJson) {
+                const toolList = JSON.parse(result.usedToolsJson);
+                this.showToolsThenAnswer(toolList, 0, result);
+            } else {
+                this.addBotMessage(result.answer, result.model, null, result.provider, result.streamChunks);
+            }
+        })
         .catch(error => {
             this.isSending = false;
             this.addBotMessage('Error: ' + this.reduceError(error), null, null, null, null);
         });
     }
 
-    handleChatStep(resultJson) {
-        const step = JSON.parse(resultJson);
-
-        if (step.type === 'error') {
-            this.isSending = false;
-            this.addBotMessage(step.text, null, null, null, null);
+    showToolsThenAnswer(toolList, index, result) {
+        if (index >= toolList.length) {
+            this.addBotMessage(result.answer, result.model, result.toolName, result.provider, result.streamChunks);
             return;
         }
-
-        if (step.type === 'answer') {
-            this.isSending = false;
-            this.addBotMessage(step.text, step.model, null, step.provider, step.streamChunks);
-            return;
-        }
-
-        if (step.type === 'tool') {
-            const argsParsed = this.tryParseJson(step.toolArgs);
-            const argsShort = this.summarizeArgs(argsParsed);
-            const toolId = this.addToolCall(step.toolName, argsShort,
-                typeof step.toolArgs === 'string' ? step.toolArgs : JSON.stringify(step.toolArgs), null);
-
-            continueChat({ toolName: step.toolName, toolResults: step.toolResult })
-                .then(nextJson => {
-                    this.updateToolCallResult(toolId, this.summarizeToolResult(step.toolResult), null);
-                    return this.handleChatStep(nextJson);
-                })
-                .catch(error => {
-                    this.isSending = false;
-                    this.addBotMessage('Error: ' + this.reduceError(error), null, null, null, null);
-                });
-        }
+        const tool = toolList[index];
+        const argsShort = this.summarizeArgs(this.tryParseJson(tool.arguments || '{}'));
+        const id = this.addToolCall(tool.name, argsShort, tool.arguments || '{}', null);
+        setTimeout(() => {
+            this.updateToolCallResult(id, 'Done', null);
+            this.showToolsThenAnswer(toolList, index + 1, result);
+        }, 400);
     }
 
     handleSummarizeCurrentRecord() {

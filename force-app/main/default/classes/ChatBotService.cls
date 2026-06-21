@@ -40,7 +40,7 @@ public with sharing class ChatBotService {
     public static String aiProvider;
     public static List<String> streamChunks;
 
-    public static String getApiKey(String provider) {
+    public static String lookupApiKey(String provider) {
         if (apiKeyOverride != null) return apiKeyOverride;
         List<AI_Provider_Setting__mdt> settings = [
             SELECT Api_Key__c FROM AI_Provider_Setting__mdt
