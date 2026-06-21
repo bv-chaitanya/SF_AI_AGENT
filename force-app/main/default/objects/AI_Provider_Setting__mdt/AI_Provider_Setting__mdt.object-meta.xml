@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
-    <description>Per-provider config for OpenAI-compatible AI APIs. Create one record per provider: MasterLabel = provider name (e.g. Neuralwatt, DeepSeek, OpenRouter), set Api_Key__c and Base_Url__c. The model list is fetched dynamically from GET {Base_Url}/models.</description>
+    <description>Per-provider metadata for OpenAI-compatible AI providers. MasterLabel = provider display name (e.g. Neuralwatt, DeepSeek, OpenRouter). The Base URL for each provider lives in the matching Named Credential (callout:&lt;Provider&gt;_API). Api_Key__c must be set manually in Setup after deploy — never commit real keys to source.</description>
     <label>AI Provider Setting</label>
     <pluralLabel>AI Provider Settings</pluralLabel>
     <visibility>Public</visibility>

@@ -7,8 +7,8 @@ private class ChatBotControllerTest {
     @isTest
     static void sendMessage_returnsConfigError_whenNoApiKey() {
         ChatBotService.apiKeyOverride = null;
-        ChatBotService.baseUrlOverride = null;
         ChatBotService.lastMcpError = null;
+        ChatBotService.mcpSessionIdOverride = 'test-session';
         Test.startTest();
         String r = ChatBotController.sendMessage('Hello', PRV, OR_MODEL, null, null);
         Test.stopTest();
@@ -72,7 +72,7 @@ private class ChatBotControllerTest {
     static void fetchModelsList_parsesModelsResponse() {
         Test.setMock(HttpCalloutMock.class, new ModelsMock());
         Test.startTest();
-        List<String> models = ChatBotService.fetchModelsList('https://api.test.com', 'test-key');
+        List<String> models = ChatBotService.fetchModelsList('TestProvider', 'test-key');
         Test.stopTest();
         System.assertEquals(2, models.size(), 'Expected 2 models');
         System.assert(models.contains('glm-5.2'), 'Should contain glm-5.2');
@@ -122,7 +122,6 @@ private class ChatBotControllerTest {
 
     private static void setupTools() {
         ChatBotService.apiKeyOverride = 'test-key';
-        ChatBotService.baseUrlOverride = 'https://api.test.com';
         ChatBotService.mcpSessionIdOverride = 'test-session';
         ChatBotService.toolsListResponse = '{"jsonrpc":"2.0","result":{"tools":[{"name":"query","description":"Query","inputSchema":{"type":"object"}}]}}';
     }
