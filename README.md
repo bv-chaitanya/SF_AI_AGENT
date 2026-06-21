@@ -1,7 +1,7 @@
 # SF AI Agent — Salesforce AI Chatbot
 
 A multi-provider AI chatbot running as a Lightning Web Component inside Salesforce.  
-Chat with your records via the **Salesforce Platform MCP Server** using **DeepSeek** or **OpenRouter**.
+Chat with your records via the **Salesforce Platform MCP Server** using **Neuralwatt**, **DeepSeek**, or **OpenRouter**.
 
 ---
 
@@ -11,7 +11,8 @@ Chat with your records via the **Salesforce Platform MCP Server** using **DeepSe
 |---|---|
 | **Salesforce Org** | Developer Edition (free) or any org with API access |
 | **Salesforce CLI** | `sf` CLI installed and authenticated to your org |
-| **DeepSeek API Key** | Get one at [platform.deepseek.com](https://platform.deepseek.com) — starts with `sk-` |
+| **Neuralwatt API Key** | OpenAI-compatible provider (GLM/Kimi/Qwen models) — the default active provider |
+| **DeepSeek API Key** *(optional)* | Get one at [platform.deepseek.com](https://platform.deepseek.com) — starts with `sk-` |
 | **OpenRouter API Key** *(optional)* | Get one at [openrouter.ai/keys](https://openrouter.ai/keys) — for fallback/free models |
 
 ---
@@ -48,10 +49,13 @@ sf project deploy start --source-dir force-app --target-org YOUR_ORG_ALIAS
 ### 4. Add API Keys
 Setup → Custom Metadata Types → **AI Provider Setting** → Manage Records → New:
 
-| MasterLabel | Api_Key__c |
-|---|---|
-| `DeepSeek` | `sk-your-deepseek-key` |
-| `OpenRouter` | `sk-or-v1-your-openrouter-key` |
+| MasterLabel | Base_Url__c | Is_Active__c | Api_Key__c |
+|---|---|---|---|
+| `Neuralwatt` | `https://api.neuralwatt.com/v1` | `true` | *(set manually)* |
+| `DeepSeek` | `https://api.deepseek.com` | `false` | *(set manually)* |
+| `OpenRouter` | `https://openrouter.ai/api/v1` | `false` | *(set manually)* |
+
+> Only `Is_Active__c = true` providers appear in the UI dropdown. Set the API key after deploying — it is never committed to source.
 
 ### 5. Add to Page
 Edit any Lightning Record Page → drag in the **chatBot** component → Save.  
@@ -80,7 +84,8 @@ For the full architecture, see **[ARCHITECTURE.md](ARCHITECTURE.md)** — includ
 
 ## Features
 
-- **Dual AI** — DeepSeek (`deepseek-chat`, `deepseek-reasoner`) and OpenRouter (8 models including free tier)
+- **Multi-provider AI** — Neuralwatt (GLM/Kimi/Qwen), DeepSeek, and OpenRouter (300+ models) via CMDT config
+- **Dynamic model loading** — models fetched from `/models` endpoint; no hardcoded lists
 - **UI selectors** — pick provider and model from dropdowns above the input
 - **Streaming** — responses type out word-by-word (SSE parsed by Apex, rendered in LWC)
 - **Conversation memory** — summarized context sent with each message
@@ -88,6 +93,7 @@ For the full architecture, see **[ARCHITECTURE.md](ARCHITECTURE.md)** — includ
 - **Multi-tool** — AI can query schema then create/update/delete in one request
 - **Tool cards** — each MCP tool call shown with name, args, expandable detail
 - **Privacy** — hashed user ID sent to DeepSeek for KVCache isolation
+- **Accessibility** — `aria-label` on all controls, keyboard-navigable tool cards
 
 ---
 

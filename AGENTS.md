@@ -48,7 +48,7 @@ All provider config lives in `AI_Provider_Setting__mdt` CMDT — one record per 
 - Result cached in static `providerConfigCache` for the transaction
 - `@TestVisible testProviderConfigs` map lets tests inject fake config without SOQL
 
-### Provider-specific extras (handled in `callOpenAiCompatible()`)
+### Provider-specific extras (handled in `callAi()`)
 - **OpenRouter**: sends `HTTP-Referer` + `X-Title` headers; free models chain fallback
 - **DeepSeek**: sends `user_id` (SHA-256 of `UserInfo.getUserId()`, truncated) for rate-limit privacy
 
@@ -99,8 +99,8 @@ This org edition does not support the `ApiKey` authentication protocol on Extern
 
 ## LWC Architecture
 - **`chatBot`** component — supports `AppPage`, `RecordPage`, `HomePage` targets
-- Uses SLDS `lightning-card`, `lightning-combobox`, `lightning-input`, `lightning-button`, `lightning-avatar`, `lightning-layout` base components
-- **Provider + Model selectors** in UI — user picks OpenRouter or DeepSeek, then the model
+- Uses native HTML `<input>`, `<select>`, `<button>` elements with custom SLDS-styled CSS classes
+- **Provider + Model selectors** in UI — user picks any active provider, then the model
 - **`sendMessageDetailed`** returns `ChatResponse` with `answer`, `usedTool`, `toolName`, `toolArguments`, `model`, `provider`
 - **`summarizeCurrentRecordDetailed`** — summarize the current record (takes `recordId`)
 - Native function calling from AI → Apex parses `message.tool_calls[0].function`
@@ -119,7 +119,9 @@ SF_AI_AGENT/
 ├── AGENTS.md                          # This file — project skill for opencode
 ├── README.md                          # README for humans
 ├── ARCHITECTURE.md                    # UML diagrams + data flow
+├── docs/mcp-tool-audit.md             # MCP tool exposure audit
 ├── .gitignore
+├── .gitattributes
 ├── sfdx-project.json
 ├── config/project-scratch-def.json
 ├── force-app/main/default/
@@ -133,13 +135,17 @@ SF_AI_AGENT/
 │   │   ├── ChatBotController.cls-meta.xml
 │   │   ├── ChatBotService.cls         # MCP + AI provider implementation
 │   │   ├── ChatBotService.cls-meta.xml
-│   │   ├── ChatBotControllerTest.cls  # 9 test methods with HttpCalloutMock
+│   │   ├── ChatBotControllerTest.cls  # 11 test methods with HttpCalloutMock
 │   │   └── ChatBotControllerTest.cls-meta.xml
 │   ├── objects/AI_Provider_Setting__mdt/
 │   │   ├── AI_Provider_Setting__mdt.object-meta.xml
-│   │   └── fields/Api_Key__c.field-meta.xml
+│   │   └── fields/
+│   │       ├── Api_Key__c.field-meta.xml
+│   │       ├── Base_Url__c.field-meta.xml
+│   │       └── Is_Active__c.field-meta.xml
 │   └── remoteSiteSettings/
 │       ├── OpenRouter.remoteSite-meta.xml        # https://openrouter.ai
 │       ├── DeepSeek.remoteSite-meta.xml          # https://api.deepseek.com
+│       ├── Neuralwatt.remoteSite-meta.xml        # https://api.neuralwatt.com
 │       └── SalesforcePlatformApi.remoteSite-meta.xml # https://api.salesforce.com
 ```
