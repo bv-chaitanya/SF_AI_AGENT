@@ -10,7 +10,7 @@ Chat with your records via the **Salesforce Platform MCP Server** using **DeepSe
 | Requirement | Details |
 |---|---|
 | **Salesforce Org** | Developer Edition (free) or any org with API access |
-| **SFDX CLI** | `sfdx` installed and authenticated to your org |
+| **Salesforce CLI** | `sf` CLI installed and authenticated to your org |
 | **DeepSeek API Key** | Get one at [platform.deepseek.com](https://platform.deepseek.com) — starts with `sk-` |
 | **OpenRouter API Key** *(optional)* | Get one at [openrouter.ai/keys](https://openrouter.ai/keys) — for fallback/free models |
 
@@ -42,7 +42,7 @@ This is the trickiest part. You need 3 things in sequence:
 
 ### 3. Deploy
 ```bash
-sfdx force:source:deploy -p force-app -u YOUR_ORG_ALIAS
+sf project deploy start --source-dir force-app --target-org YOUR_ORG_ALIAS
 ```
 
 ### 4. Add API Keys

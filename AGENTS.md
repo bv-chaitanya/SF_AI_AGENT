@@ -4,12 +4,15 @@
 Multi-provider AI chatbot (OpenRouter + DeepSeek) + Salesforce Platform MCP, running as an LWC inside a Developer Edition org. Provider and model selectable from the UI.
 
 ## Deploy
-```powershell
-# Primary (sfdx — avoids sf CLI JSON parse bug on v2.58.7):
-sfdx force:source:deploy -p force-app -u venkatachaitanyabhimisetty@gmail.com
+```bash
+# Full deploy:
+sf project deploy start --source-dir force-app --target-org venkatachaitanyabhimisetty@gmail.com
 
-# Backup (sf):
-sf project deploy start -d force-app -o "venkatachaitanyabhimisetty@gmail.com"
+# Partial deploy (changed files only):
+sf project deploy start --source-dir force-app/main/default/classes/ChatBotService.cls --target-org venkatachaitanyabhimisetty@gmail.com
+
+# Run tests:
+sf apex run test --class-name ChatBotControllerTest --target-org venkatachaitanyabhimisetty@gmail.com --wait 1
 ```
 
 ## Salesforce Org
@@ -68,10 +71,10 @@ When org upgrades to API v64+, replace CMDT key storage with Named Credentials (
 - **Reference**: `@SF_AI_AGENT` — points to this project folder
 - **Auth**: automatic (uses stored `sf org login` session)
 
-## Known SF CLI Bugs (v2.58.7)
-- **JSON parse error**: `"Metadata API request failed: Missing message metadata.transfer:Finalizing"` — this is a DISPLAY bug only. Deploy succeeded. Use `sfdx force:source:deploy` or check deploy report to confirm.
-- **`sf project deploy report -i ID`** — may throw `InvalidProjectWorkspaceError` when run from wrong dir. Always run from project root.
-- **CLI update nag**: `"@salesforce/cli update available from 2.58.7 to 2.139.6"` — safe to ignore, v2.58.7 works for deploy/query.
+## SF CLI Notes
+- **Partial deploys**: Use `--source-dir <path>` for single files, `--metadata` for type-level deploys
+- **Run tests**: `sf apex run test --class-name <class> --wait <minutes>`
+- **`sfdx-project.json`**: Still the standard config file name — not renamed to `sf-project.json`
 
 ## LWC Architecture
 - **`chatBot`** component — supports `AppPage`, `RecordPage`, `HomePage` targets
@@ -94,7 +97,7 @@ When org upgrades to API v64+, replace CMDT key storage with Named Credentials (
 SF_AI_AGENT/
 ├── AGENTS.md                          # This file — project skill for opencode
 ├── README.md                          # README for humans
-├── LINKEDIN_POST.md                   # LinkedIn post with setup steps
+├── ARCHITECTURE.md                    # UML diagrams + data flow
 ├── .gitignore
 ├── sfdx-project.json
 ├── config/project-scratch-def.json
