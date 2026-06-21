@@ -1,0 +1,145 @@
+<template>
+    <div class="chat-wrapper">
+        <div class="chat-body">
+            <template for:each={messages} for:item="msg">
+                <div key={msg.id}>
+
+                    <template if:true={msg.isStatus}>
+                        <div class="c-msg c-msg-status">
+                            <span class="c-thinking">
+                                <template if:true={msg.showSpinner}>
+                                    <span class="c-dot"></span><span class="c-dot"></span><span class="c-dot"></span>
+                                </template>
+                                {msg.text}
+                            </span>
+                        </div>
+                    </template>
+
+                    <template if:true={msg.isToolCall}>
+                        <div class="c-tool-row" onclick={msg.toggleExpanded}>
+                            <template if:true={msg.toolResult}>
+                                <span class="c-tool-check">&#10003;</span>
+                            </template>
+                            <template if:false={msg.toolResult}>
+                                <span class="c-dot c-dot-blue"></span>
+                            </template>
+                            <span class="c-tool-name">{msg.toolName}</span>
+                            <span class="c-tool-args">{msg.toolArgs}</span>
+                            <span class="c-tool-toggle">
+                                <template if:false={msg.expanded}>Show</template>
+                                <template if:true={msg.expanded}>Hide</template>
+                            </span>
+                        </div>
+                        <template if:true={msg.expanded}>
+                            <div class="c-tool-detail">
+                                <pre>{msg.toolDetail}</pre>
+                            </div>
+                        </template>
+                    </template>
+
+                    <template if:true={msg.isBot}>
+                        <div class="c-msg c-msg-bot">
+                            <div class="c-avatar c-avatar-bot">{providerInitials}</div>
+                            <div class="c-bubble">
+                                <lightning-formatted-rich-text value={msg.formattedText}>
+                                </lightning-formatted-rich-text>
+                                <div class="c-meta">{msg.subtitle} &middot; {msg.time}</div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template if:true={msg.isUser}>
+                        <div class="c-msg c-msg-user">
+                            <div class="c-bubble">
+                                <span>{msg.text}</span>
+                                <div class="c-meta">{msg.time}</div>
+                            </div>
+                            <div class="c-avatar c-avatar-user">You</div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <template if:true={isSending}>
+                <div class="c-msg c-msg-bot">
+                    <div class="c-avatar c-avatar-bot">{providerInitials}</div>
+                    <div class="c-bubble c-typing">
+                        <span class="c-dot"></span><span class="c-dot"></span><span class="c-dot"></span>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <div class="chat-input-bar">
+            <div class="chat-context-row" if:true={contextRecords.length}>
+                <template for:each={contextRecords} for:item="rec">
+                    <span key={rec.id} class="c-chip">
+                        <span class="c-chip-obj">{rec.objectType}</span>
+                        <span class="c-chip-name">{rec.name}</span>
+                        <template if:false={isSending}>
+                            <span class="c-chip-remove" data-id={rec.id} onclick={removeContextRecord}>&times;</span>
+                        </template>
+                    </span>
+                </template>
+                <template if:false={isSending}>
+                    <span class="c-chip c-chip-add" onclick={toggleSearch}>+</span>
+                </template>
+            </div>
+
+            <div if:true={showSearch} class="c-search-panel">
+                <input
+                    type="text"
+                    class="c-search-input"
+                    placeholder="Search records by name..."
+                    value={searchQuery}
+                    oninput={handleSearchInput}
+                />
+                <div class="c-search-results">
+                    <template if:true={isSearching}>
+                        <div class="c-search-empty">Searching...</div>
+                    </template>
+                    <template if:false={isSearching}>
+                        <template for:each={searchResults} for:item="rec">
+                            <div key={rec.id} class="c-search-item" data-id={rec.id} onclick={selectSearchResult}>
+                                <span class="c-chip-obj">{rec.objectType}</span>
+                                <span>{rec.name}</span>
+                            </div>
+                        </template>
+                        <template if:false={searchResults.length}>
+                            <div if:true={searchQuery.length} class="c-search-empty">No results</div>
+                        </template>
+                    </template>
+                </div>
+            </div>
+
+            <div class="chat-settings-row">
+                <select class="c-select" value={provider} onchange={handleProviderChange} disabled={isSending}>
+                    <template for:each={providerOptions} for:item="opt">
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    </template>
+                </select>
+                <select class="c-select c-select-wide" value={model} onchange={handleModelChange} disabled={isSending}>
+                    <template for:each={modelOptions} for:item="opt">
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    </template>
+                </select>
+            </div>
+            <div class="chat-input-row">
+                <input
+                    type="text"
+                    class="c-input"
+                    placeholder="Ask about your Salesforce records..."
+                    value={inputText}
+                    oninput={handleInputChange}
+                    onkeydown={handleKeyDown}
+                    disabled={isSending}
+                />
+                <button class="c-send" onclick={handleSend} disabled={isSending}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
