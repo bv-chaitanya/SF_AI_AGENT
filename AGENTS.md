@@ -21,40 +21,41 @@ sf apex run test --class-name ChatBotControllerTest --target-org venkatachaitany
 - **Login**: `sf org login web --instance-url https://login.salesforce.com --set-default`
 
 ## AI Providers (dynamic, OpenAI-compatible)
-All provider config lives in one CMDT: `AI_Provider_Setting__mdt`. Create one record per provider:
-- **MasterLabel**: provider display name (e.g. `Neuralwatt`, `DeepSeek`, `OpenRouter`)
-- **Api_Key__c**: bearer token for the provider
-- **Base_Url__c**: OpenAI-compatible base URL (code appends `/chat/completions` and `/models`)
+All provider config lives in two places:
+- **NamedCredential** (`force-app/main/default/namedCredentials/<Provider>_API.namedCredential-meta.xml`) — stores the base URL. Deployed via source. Legacy type, Anonymous principal, NoAuthentication protocol.
+- **CMDT** `AI_Provider_Setting__mdt` — stores `MasterLabel` (provider name), `Api_Key__c` (must be set manually in Setup), and `Is_Active__c` (UI visibility flag).
+
+### Key security model
+- **No API keys in source control.** CMDT records deploy with empty `Api_Key__c`. Admins set the real key manually in Setup → Custom Code → Custom Metadata → AI Provider Settings → Manage Records → Edit → set Api_Key__c → Save.
+- Apex calls resolve as `callout:<Provider>_API/chat/completions` and `callout:<Provider>_API/models`, using the NC endpoint. Apex adds `Authorization: Bearer <key>` header manually from CMDT.
+- The `Is_Active__c` flag controls UI visibility. `getAvailableModels()` only queries `WHERE Is_Active__c = true`.
 
 ### To add a new provider
-1. Add a CMDT record (MasterLabel + API key + base URL)
-2. Add a `RemoteSiteSetting` for the base URL host
-3. Done — Apex and LWC pick it up automatically; no code changes needed
+1. Create a `NamedCredential` source file (e.g. `NewProvider_API.namedCredential-meta.xml`) with legacy type, Anonymous principal, NoAuthentication protocol, endpoint = base URL
+2. Add a `CustomMetadata` record (e.g. `AI_Provider_Setting.NewProvider.md`) with empty Api_Key and Is_Active = true
+3. Add a `RemoteSiteSetting` for the host (required because NC is NoAuthentication — Apex sets the Authorization header manually, so the RSS still gates the host)
+4. Deploy, then set `Api_Key__c` manually in Setup
+5. Done — Apex and LWC pick it up automatically; no code changes needed
 
 ### How models are loaded
-- `ChatBotService.fetchModelsList(baseUrl, apiKey)` calls `GET {baseUrl}/models` (standard OpenAI-compatible endpoint)
-- `ChatBotController.getAvailableModels()` iterates all CMDT records and returns `{providerName: [modelId, ...]}` as JSON
+- `ChatBotService.fetchModelsList(provider, apiKey)` calls `GET callout:<Provider>_API/models` (NC holds the URL)
+- `ChatBotController.getAvailableModels()` iterates active CMDT records and returns `{providerName: [modelId, ...]}` as JSON
 - LWC uses first provider + first model as the default
 
 ### Provider-specific extras (handled in `callOpenAiCompatible()`)
 - **OpenRouter**: sends `HTTP-Referer` + `X-Title` headers; free models chain fallback (`nex-agi/nex-n2-pro:free` → `nvidia/...` → `google/gemma-...` → `openrouter/free`)
 - **DeepSeek**: sends `user_id` (SHA-256 of `UserInfo.getUserId()`, truncated) for rate-limit privacy
 
-### Recommended provider base URLs
-| Provider | Base URL | Notes |
-|----------|----------|-------|
-| Neuralwatt | `https://api.neuralwatt.com/v1` | OpenAI-compatible, GLM/Kimi/Qwen models |
-| DeepSeek | `https://api.deepseek.com` | Note: no `/v1` suffix per their docs |
-| OpenRouter | `https://openrouter.ai/api/v1` | OpenAI-compatible, 300+ models |
+### Named Credentials in this org
+| NamedCredential | Endpoint | Notes |
+|-----------------|----------|-------|
+| Neuralwatt_API | `https://api.neuralwatt.com/v1` | OpenAI-compatible, GLM/Kimi/Qwen models |
+| DeepSeek_API | `https://api.deepseek.com` | Note: no `/v1` suffix per their docs |
+| OpenRouter_API | `https://openrouter.ai/api/v1` | OpenAI-compatible, 300+ models |
+| Salesforce_MCP | `https://api.salesforce.com` | OAuth, used only for the MCP server callout |
 
-### TODO: Upgrade to Named Credentials
-When org upgrades to API v64+, replace CMDT key storage with Named Credentials (ApiKey protocol). Create one NC per provider with:
-- Protocol: **API Key**
-- Generate Authorization Header: true  
-- API Key: `Bearer sk-xxx`
-- Apex: use `callout:<ProviderName>_API`
-- Remove `getProviderConfig()` and `Authorization` header from `doAiPost()`
-- **Timeout**: 12s per callout
+### Why not External Credentials with ApiKey protocol?
+This org edition does not support the `ApiKey` authentication protocol on External Credentials (confirmed via deploy error). When the org supports it, replace each legacy NC + CMDT Api_Key pair with a single NC of type `SecuredEndpoint` referencing an ExternalCredential with `authenticationProtocol=ApiKey`. The actual bearer token would be stored encrypted in the ExternalCredential, and Apex could drop the manual `Authorization` header.
 
 ## Salesforce Platform MCP Server (platform.sobject-all)
 - **URL**: `https://api.salesforce.com/platform/mcp/v1/platform/sobject-all` (hosted by Salesforce, NOT the npm DX package)
