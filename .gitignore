@@ -6,3 +6,4 @@ node_modules/
 openrouter-key.txt
 **/__pycache__/
 .vscode/
+session-ses_*.md
