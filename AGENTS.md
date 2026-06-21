@@ -110,7 +110,9 @@ SF_AI_AGENT/
 │   ├── classes/
 │   │   ├── ChatBotController.cls      # MCP client + dual-provider AI orchestrator
 │   │   ├── ChatBotController.cls-meta.xml
-│   │   ├── ChatBotControllerTest.cls  # 11 test methods with HttpCalloutMock
+│   │   ├── ChatBotService.cls         # MCP + AI provider implementation
+│   │   ├── ChatBotService.cls-meta.xml
+│   │   ├── ChatBotControllerTest.cls  # 9 test methods with HttpCalloutMock
 │   │   └── ChatBotControllerTest.cls-meta.xml
 │   ├── objects/AI_Provider_Setting__mdt/
 │   │   ├── AI_Provider_Setting__mdt.object-meta.xml
