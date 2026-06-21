@@ -1,4 +1,4 @@
-import { LightningElement, api, track } from 'lwc';
+import { LightningElement, api } from 'lwc';
 import getAvailableModels from '@salesforce/apex/ChatBotController.getAvailableModels';
 import getRecordInfo from '@salesforce/apex/ChatBotController.getRecordInfo';
 import searchRecords from '@salesforce/apex/ChatBotController.searchRecords';
@@ -7,7 +7,7 @@ import summarizeCurrentRecordDetailed from '@salesforce/apex/ChatBotController.s
 
 export default class ChatBot extends LightningElement {
     @api recordId;
-    @track messages = [];
+    messages = [];
     inputText = '';
     isSending = false;
     messageId = 0;
@@ -21,6 +21,7 @@ export default class ChatBot extends LightningElement {
     searchQuery = '';
     searchResults = [];
     isSearching = false;
+    _searchTimer = null;
 
     connectedCallback() {
         this.loadModels();
@@ -29,7 +30,9 @@ export default class ChatBot extends LightningElement {
                 .then(result => {
                     if (result) {
                         const info = JSON.parse(result);
-                        this.addContextRecord(info);
+                        if (info.id) {
+                            this.addContextRecord(info);
+                        }
                     }
                 })
                 .catch(() => {});
@@ -98,20 +101,23 @@ export default class ChatBot extends LightningElement {
 
     handleSearchInput(event) {
         this.searchQuery = event.target.value;
+        if (this._searchTimer) clearTimeout(this._searchTimer);
         if (this.searchQuery.length < 2) {
             this.searchResults = [];
             return;
         }
-        this.isSearching = true;
-        searchRecords({ query: this.searchQuery })
-            .then(result => {
-                this.searchResults = JSON.parse(result);
-                this.isSearching = false;
-            })
-            .catch(() => {
-                this.searchResults = [];
-                this.isSearching = false;
-            });
+        this._searchTimer = setTimeout(() => {
+            this.isSearching = true;
+            searchRecords({ query: this.searchQuery })
+                .then(result => {
+                    this.searchResults = JSON.parse(result);
+                    this.isSearching = false;
+                })
+                .catch(() => {
+                    this.searchResults = [];
+                    this.isSearching = false;
+                });
+        }, 300);
     }
 
     selectSearchResult(event) {
@@ -303,19 +309,6 @@ export default class ChatBot extends LightningElement {
         this.scrollDown();
     }
 
-    addStatusMessage(text, showSpinner) {
-        const id = 'msg-' + this.messageId++;
-        this.messages = [...this.messages, {
-            id: id,
-            type: 'status',
-            isStatus: true,
-            text: text,
-            showSpinner: showSpinner === true
-        }];
-        this.scrollDown();
-        return id;
-    }
-
     addToolCall(name, argsShort, detail, result) {
         const id = 'msg-' + this.messageId++;
         this.messages = [...this.messages, {
@@ -356,10 +349,6 @@ export default class ChatBot extends LightningElement {
             }
             return m;
         });
-    }
-
-    removeMessage(id) {
-        this.messages = this.messages.filter(m => m.id !== id);
     }
 
     formatBotResponse(text) {
@@ -457,12 +446,6 @@ export default class ChatBot extends LightningElement {
         return keys.length + ' parameters';
     }
 
-    summarizeToolResult(fullAnswer) {
-        if (!fullAnswer) return 'Tool completed';
-        const s = String(fullAnswer);
-        return s.length > 100 ? s.substring(0, 100) + '...' : s;
-    }
-
     scrollDown() {
         requestAnimationFrame(() => {
             const el = this.querySelector('.chat-body');
@@ -471,8 +454,25 @@ export default class ChatBot extends LightningElement {
     }
 
     reduceError(error) {
-        if (error && error.body && error.body.message) return error.body.message;
-        if (error && error.message) return error.message;
+        if (!error) return 'Unknown error';
+        if (error.body) {
+            if (error.body.message) return error.body.message;
+            if (error.body.pageErrors && error.body.pageErrors.length) {
+                return error.body.pageErrors.map(e => e.message).join('; ');
+            }
+            if (error.body.fieldErrors) {
+                const fieldMsgs = [];
+                Object.keys(error.body.fieldErrors).forEach(f => {
+                    fieldMsgs.push(error.body.fieldErrors[f].map(e => e.message).join('; '));
+                });
+                if (fieldMsgs.length) return fieldMsgs.join('; ');
+            }
+            if (error.body.output && error.body.output.errors && error.body.output.errors.length) {
+                return error.body.output.errors.map(e => e.message).join('; ');
+            }
+        }
+        if (error.message) return error.message;
+        if (typeof error === 'string') return error;
         return 'Unknown error';
     }
 

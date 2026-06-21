@@ -4,19 +4,8 @@
             <template for:each={messages} for:item="msg">
                 <div key={msg.id}>
 
-                    <template if:true={msg.isStatus}>
-                        <div class="c-msg c-msg-status">
-                            <span class="c-thinking">
-                                <template if:true={msg.showSpinner}>
-                                    <span class="c-dot"></span><span class="c-dot"></span><span class="c-dot"></span>
-                                </template>
-                                {msg.text}
-                            </span>
-                        </div>
-                    </template>
-
                     <template if:true={msg.isToolCall}>
-                        <div class="c-tool-row" onclick={msg.toggleExpanded}>
+                        <div class="c-tool-row" onclick={msg.toggleExpanded} role="button" tabindex="0" aria-label="Toggle tool details for {msg.toolName}">
                             <template if:true={msg.toolResult}>
                                 <span class="c-tool-check">&#10003;</span>
                             </template>
@@ -77,12 +66,12 @@
                         <span class="c-chip-obj">{rec.objectType}</span>
                         <span class="c-chip-name">{rec.name}</span>
                         <template if:false={isSending}>
-                            <span class="c-chip-remove" data-id={rec.id} onclick={removeContextRecord}>&times;</span>
+                            <span class="c-chip-remove" data-id={rec.id} onclick={removeContextRecord} aria-label="Remove context record">&times;</span>
                         </template>
                     </span>
                 </template>
                 <template if:false={isSending}>
-                    <span class="c-chip c-chip-add" onclick={toggleSearch}>+</span>
+                    <span class="c-chip c-chip-add" onclick={toggleSearch} aria-label="Add context record">+</span>
                 </template>
             </div>
 
@@ -93,6 +82,7 @@
                     placeholder="Search records by name..."
                     value={searchQuery}
                     oninput={handleSearchInput}
+                    aria-label="Search records"
                 />
                 <div class="c-search-results">
                     <template if:true={isSearching}>
@@ -113,12 +103,12 @@
             </div>
 
             <div class="chat-settings-row">
-                <select class="c-select" value={provider} onchange={handleProviderChange} disabled={isSending}>
+                <select class="c-select" value={provider} onchange={handleProviderChange} disabled={isSending} aria-label="AI provider">
                     <template for:each={providerOptions} for:item="opt">
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                     </template>
                 </select>
-                <select class="c-select c-select-wide" value={model} onchange={handleModelChange} disabled={isSending}>
+                <select class="c-select c-select-wide" value={model} onchange={handleModelChange} disabled={isSending} aria-label="AI model">
                     <template for:each={modelOptions} for:item="opt">
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                     </template>
@@ -133,8 +123,9 @@
                     oninput={handleInputChange}
                     onkeydown={handleKeyDown}
                     disabled={isSending}
+                    aria-label="Chat message"
                 />
-                <button class="c-send" onclick={handleSend} disabled={isSending}>
+                <button class="c-send" onclick={handleSend} disabled={isSending} aria-label="Send message">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/>
                     </svg>

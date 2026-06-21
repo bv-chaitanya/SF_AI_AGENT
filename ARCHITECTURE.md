@@ -262,31 +262,31 @@ USER SEES: ✓ getObjectSchema → ✓ createRecord → "Created contact John Do
 │ + extractContent(body): String       │
 │ + buildContextText(json): String     │
 │ + msg(role, content): Map            │
-├──────────────────────────────────────┤
-│ - callDeepSeek(model,key,msgs,tools) │
-│ - callOpenRouter(model,key,msgs,tools)│
-│ - doAiPost(url,key,body,or): Resp    │
-│ - doMcpPost(body): Response          │
-│ - buildRpc(method,params): Map       │
-│ - parseAllNative(body): List<TC>     │
-│ - parseNative(body): McpToolCall     │
-│ - parseTagToolCall(content): TC      │
-│ - parseStreamChunks(sse): List<Str>  │
-│ - extractContentOrNull(body): Str    │
-│ - extractDeltaContent(json): Str     │
-│ - fmtErr(body): String               │
-│ - buildTools(json): List<Object>     │
-│ - buildModelChain(model): List<Str>  │
-│ - extractSseData(body): String       │
-│ - findHeaderInsensitive(res,name)    │
-│ - extractSessionId(body): String     │
-│ - joinChunks(chunks): String         │
-├──────────────────────────────────────┤
-│ @TestVisible state:                  │
-│ + apiKeyOverride, toolsListResponse  │
-│ + toolCallResponse, mcpInitResponse  │
-│ + mcpSessionIdOverride               │
-│ + lastMcpError, lastAiError          │
+ ├──────────────────────────────────────┤
+ │ - callOpenAiCompatible(prv,m,k,url,  │
+ │       msgs,tools): String            │
+ │ - buildOpenRouterChain(model): List  │
+ │ - doAiPost(url,key,body,or): Resp    │
+ │ - doMcpPost(body): Response          │
+ │ - buildRpc(method,params): Map       │
+ │ - parseAllNative(body): List<TC>     │
+ │ - parseTagToolCall(content): TC      │
+ │ - parseStreamChunks(sse): List<Str>  │
+ │ - extractContentOrNull(body): Str    │
+ │ - fmtErr(body): String               │
+ │ - buildTools(json): List<Object>     │
+ │ - extractSseData(body): String       │
+ │ - findHeaderInsensitive(res,name)    │
+ │ - extractSessionId(body): String     │
+ │ - joinChunks(chunks): String         │
+ ├──────────────────────────────────────┤
+ │ @TestVisible state:                  │
+ │ + testModelsMap                      │
+ │ + testProviderConfigs                │
+ │ + toolsListResponse                  │
+ │ + toolCallResponse, mcpInitResponse  │
+ │ + mcpSessionIdOverride               │
+ │ + lastMcpError, lastAiError          │
 │ + executedToolName, executedToolArgs │
 │ + executedTools: List<Map>           │
 │ + aiModel, aiProvider, streamChunks  │

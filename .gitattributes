@@ -1,0 +1,11 @@
+# Enforce LF (Unix) line endings for all text files - matches Salesforce metadata API expectations.
+# Silences the "LF will be replaced by CRLF" git warnings on Windows.
+* text=auto eol=lf
+
+# Binary files - never normalize
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary

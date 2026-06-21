@@ -30,18 +30,19 @@ public with sharing class ChatBotController {
             String objName = rid.getSObjectType().getDescribe().getName();
             String nameField = objName == 'Case' ? 'CaseNumber' : 'Name';
             List<SObject> records = Database.query('SELECT Id, ' + nameField + ' FROM ' + objName + ' WHERE Id = :rid LIMIT 1');
-            if (records.isEmpty()) return null;
+            if (records.isEmpty()) return '{}';
             SObject rec = records[0];
             String name = objName == 'Case' ? (String) rec.get('CaseNumber') + ' - ' + (String) rec.get('Subject') : (String) rec.get('Name');
             if (String.isBlank(name)) name = objName;
             return JSON.serialize(new Map<String, String>{'id' => rec.Id, 'name' => name, 'objectType' => objName });
-        } catch (Exception e) { return null; }
+        } catch (Exception e) { return '{}'; }
     }
 
     @AuraEnabled
     public static String searchRecords(String query) {
         if (String.isBlank(query) || query.length() < 2) return '[]';
         try {
+            String term = '*' + query + '*';
             List<List<SObject>> results = Search.query('FIND :term IN NAME FIELDS RETURNING Account(Id, Name LIMIT 5), Contact(Id, Name LIMIT 5), Opportunity(Id, Name LIMIT 5), Lead(Id, Name LIMIT 5), Case(Id, CaseNumber, Subject LIMIT 5)');
             List<Map<String, String>> items = new List<Map<String, String>>();
             for (List<SObject> soList : results) {
@@ -70,7 +71,7 @@ public with sharing class ChatBotController {
                 List<String> models = ChatBotService.fetchModelsList(s.Base_Url__c, s.Api_Key__c);
                 if (!models.isEmpty()) result.put(s.MasterLabel, models);
             }
-        } catch (Exception e) { }
+        } catch (Exception e) { System.debug('getAvailableModels error: ' + e.getMessage()); }
         return JSON.serialize(result);
     }
 
@@ -93,7 +94,7 @@ public with sharing class ChatBotController {
         if (!ChatBotService.initMcp()) return 'MCP init failed: ' + ChatBotService.lastMcpError;
 
         List<Object> tools = ChatBotService.getTools();
-        if (tools == null) return 'Could not retrieve MCP tools.';
+        if (tools == null) return 'Could not retrieve MCP tools. Error: ' + ChatBotService.lastMcpError;
 
         List<Map<String, Object>> msgs = new List<Map<String, Object>>();
         msgs.add(ChatBotService.msg('system',
@@ -143,7 +144,7 @@ public with sharing class ChatBotController {
         if (String.isBlank(baseUrl)) return provider + ' Base URL not configured.';
         if (!ChatBotService.initMcp()) return 'MCP init failed.';
 
-        Map<String, Object> p = new Map<String, Object>{'name' => 'soqlQuery', 'arguments' => new Map<String, Object>{'q' => 'SELECT FIELDS(ALL) FROM ' + obj + ' WHERE Id = \'' + vid + '\' LIMIT 1' }};
+        Map<String, Object> p = new Map<String, Object>{'name' => 'soqlQuery', 'arguments' => new Map<String, Object>{'q' => 'SELECT FIELDS(ALL) FROM ' + obj + ' WHERE Id = \'' + String.escapeSingleQuotes(vid) + '\' LIMIT 1' }};
         ChatBotService.executedToolName = 'soqlQuery';
         String tr = ChatBotService.extractToolResult(ChatBotService.callMcp('tools/call', p));
 

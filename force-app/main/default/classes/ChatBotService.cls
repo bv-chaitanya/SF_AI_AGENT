@@ -4,8 +4,6 @@ public with sharing class ChatBotService {
     private static final Integer HTTP_TIMEOUT = 60000;
     private static final Integer AI_TIMEOUT = 12000;
 
-    @TestVisible public static String apiKeyOverride;
-    @TestVisible public static String baseUrlOverride;
     @TestVisible public static Map<String, List<String>> testModelsMap;
     @TestVisible public static String toolsListResponse;
     @TestVisible public static String toolCallResponse;
@@ -13,12 +11,12 @@ public with sharing class ChatBotService {
     @TestVisible public static String mcpSessionIdOverride;
     @TestVisible public static String lastMcpError;
     @TestVisible public static String lastAiError;
+    @TestVisible public static Map<String, ProviderConfig> testProviderConfigs;
 
     private static String sessionId;
     private static String cachedToolsJson;
     private static List<Object> cachedTools;
     private static Map<String, ProviderConfig> providerConfigCache;
-    @TestVisible public static Map<String, ProviderConfig> testProviderConfigs;
 
     public class ProviderConfig {
         @TestVisible public String apiKey;
@@ -29,14 +27,6 @@ public with sharing class ChatBotService {
     public static String executedToolName;
     public static String executedToolArguments;
     public static List<Map<String, String>> executedTools = new List<Map<String, String>>();
-    public static List<Map<String, Object>> activeMessages;
-    public static String activeProvider;
-    public static String activeModel;
-    public static List<Object> activeTools;
-    private static String activeApiKey;
-
-    public static void setActiveApiKey(String key) { activeApiKey = key; }
-    public static String getActiveApiKey() { return activeApiKey; }
     public static String aiModel;
     public static String aiProvider;
     public static List<String> streamChunks;
@@ -46,9 +36,7 @@ public with sharing class ChatBotService {
             return providerConfigCache.get(provider);
         }
         ProviderConfig config;
-        if (apiKeyOverride != null) {
-            config = new ProviderConfig(apiKeyOverride, baseUrlOverride != null ? baseUrlOverride : 'https://api.test.com');
-        } else if (testProviderConfigs != null && testProviderConfigs.containsKey(provider)) {
+        if (testProviderConfigs != null && testProviderConfigs.containsKey(provider)) {
             config = testProviderConfigs.get(provider);
         } else {
             List<AI_Provider_Setting__mdt> settings = [
@@ -64,16 +52,6 @@ public with sharing class ChatBotService {
         if (providerConfigCache == null) providerConfigCache = new Map<String, ProviderConfig>();
         providerConfigCache.put(provider, config);
         return config;
-    }
-
-    public static String lookupApiKey(String provider) {
-        ProviderConfig config = getProviderConfig(provider);
-        return config != null ? config.apiKey : null;
-    }
-
-    public static String lookupBaseUrl(String provider) {
-        ProviderConfig config = getProviderConfig(provider);
-        return config != null ? config.baseUrl : null;
     }
 
     public static List<String> fetchModelsList(String baseUrl, String apiKey) {
@@ -210,11 +188,6 @@ public with sharing class ChatBotService {
 
     public static String callAi(String provider, String model, String apiKey, String baseUrl,
             List<Map<String, Object>> messages, List<Object> tools) {
-        return callOpenAiCompatible(provider, model, apiKey, baseUrl, messages, tools);
-    }
-
-    private static String callOpenAiCompatible(String provider, String model, String apiKey, String baseUrl,
-            List<Map<String, Object>> messages, List<Object> tools) {
         lastAiError = null;
         Boolean useStream = (tools == null || tools.isEmpty());
         Boolean isDeepSeek = (provider == 'DeepSeek');
@@ -245,7 +218,7 @@ public with sharing class ChatBotService {
                         }
                         lastAiError = m + ' empty';
                     } else if (String.isNotBlank(extractContentOrNull(res.getBody()))
-                        || parseNative(res.getBody()) != null) {
+                        || !parseAllNative(res.getBody()).isEmpty()) {
                         aiModel = m; aiProvider = provider; return res.getBody();
                     }
                     lastAiError = m + ' empty';
@@ -278,13 +251,6 @@ public with sharing class ChatBotService {
         return tag != null ? new List<McpToolCall>{ tag } : result;
     }
 
-    public static McpToolCall parseToolCall(String responseBody) {
-        McpToolCall tc = parseNative(responseBody);
-        if (tc != null) return tc;
-        String content = extractContentOrNull(responseBody);
-        return content != null ? parseTagToolCall(content) : null;
-    }
-
     public static String extractContent(String responseBody) {
         String c = extractContentOrNull(responseBody);
         return String.isBlank(c) ? 'The model returned an empty response.' : c;
@@ -310,8 +276,6 @@ public with sharing class ChatBotService {
         return new Map<String, Object>{ 'role' => role, 'content' => content };
     }
 
-    // --- private helpers ---
-
     private static Map<String, Object> buildRpc(String method, Map<String, Object> params) {
         Map<String, Object> rpc = new Map<String, Object>();
         rpc.put('jsonrpc', '2.0');
@@ -321,7 +285,13 @@ public with sharing class ChatBotService {
         return rpc;
     }
 
+    private static final Integer NOTIFICATION_TIMEOUT = 5000;
+
     private static HttpResponse doMcpPost(Map<String, Object> body) {
+        return doMcpPost(body, HTTP_TIMEOUT);
+    }
+
+    private static HttpResponse doMcpPost(Map<String, Object> body, Integer timeoutMs) {
         HttpRequest req = new HttpRequest();
         req.setEndpoint(MCP_SERVER_URL);
         req.setMethod('POST');
@@ -329,12 +299,13 @@ public with sharing class ChatBotService {
         req.setHeader('Accept', 'application/json, text/event-stream');
         if (sessionId != null) req.setHeader('Mcp-Session-Id', sessionId);
         req.setBody(JSON.serialize(body));
-        req.setTimeout(HTTP_TIMEOUT);
+        req.setTimeout(timeoutMs);
         return new Http().send(req);
     }
 
     private static void sendMcpNotification(String method) {
-        try { doMcpPost(buildRpc(method, null)); } catch (Exception e) { }
+        try { doMcpPost(buildRpc(method, null), NOTIFICATION_TIMEOUT); }
+        catch (Exception e) { lastMcpError = 'Notification ' + method + ' failed: ' + e.getMessage(); }
     }
 
     private static String extractSseData(String body) {
@@ -362,10 +333,6 @@ public with sharing class ChatBotService {
             if (key != null && key.toLowerCase() == name.toLowerCase()) return res.getHeader(key);
         }
         return null;
-    }
-
-    private static HttpResponse doAiPost(String url, String apiKey, Map<String, Object> body) {
-        return doAiPost(url, apiKey, body, false);
     }
 
     private static HttpResponse doAiPost(String url, String apiKey, Map<String, Object> body, Boolean openRouter) {
@@ -423,35 +390,19 @@ public with sharing class ChatBotService {
                 if (call.arguments == null) call.arguments = new Map<String, Object>();
                 result.add(call);
             }
-        } catch (Exception e) { }
+        } catch (Exception e) { lastAiError = 'parseAllNative: ' + e.getMessage(); }
         return result;
-    }
-
-    private static McpToolCall parseNative(String body) {
-        try {
-            Map<String, Object> root = (Map<String, Object>) JSON.deserializeUntyped(body);
-            List<Object> choices = (List<Object>) root.get('choices');
-            if (choices == null || choices.isEmpty()) return null;
-            Map<String, Object> msg = (Map<String, Object>) ((Map<String, Object>) choices[0]).get('message');
-            List<Object> tc = msg == null ? null : (List<Object>) msg.get('tool_calls');
-            if (tc == null || tc.isEmpty()) return null;
-            Map<String, Object> fn = (Map<String, Object>) ((Map<String, Object>) tc[0]).get('function');
-            if (fn == null || fn.get('name') == null) return null;
-            McpToolCall call = new McpToolCall();
-            call.name = (String) fn.get('name');
-            Object args = fn.get('arguments');
-            call.arguments = args instanceof String ? JSON.deserializeUntyped((String) args) : args;
-            if (call.arguments == null) call.arguments = new Map<String, Object>();
-            return call;
-        } catch (Exception e) { return null; }
     }
 
     private static McpToolCall parseTagToolCall(String content) {
         if (content == null) return null;
-        String tag = '<tool_call>';
-        if (!content.contains(tag)) return null;
-        Integer startPos = content.indexOf(tag) + tag.length();
-        Integer endPos = content.indexOf('</tool_call>');
+        String lt = String.fromCharArray(new List<Integer>{ 60 });
+        String gt = String.fromCharArray(new List<Integer>{ 62 });
+        String startTag = lt + 'tool_call' + gt;
+        String endTag = lt + '/tool_call' + gt;
+        if (!content.contains(startTag)) return null;
+        Integer startPos = content.indexOf(startTag) + startTag.length();
+        Integer endPos = content.indexOf(endTag);
         if (endPos <= startPos) return null;
         try {
             String block = content.substring(startPos, endPos).trim();
@@ -504,7 +455,7 @@ public with sharing class ChatBotService {
                     if (delta == null) continue;
                     String content = (String) delta.get('content');
                     if (String.isNotBlank(content)) chunks.add(content);
-                } catch (Exception e) { }
+                } catch (Exception e) { lastAiError = 'parseStreamChunks: ' + e.getMessage(); }
             }
         }
         return chunks;

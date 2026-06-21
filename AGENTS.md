@@ -12,7 +12,7 @@ sf project deploy start --source-dir force-app --target-org venkatachaitanyabhim
 sf project deploy start --source-dir force-app/main/default/classes/ChatBotService.cls --target-org venkatachaitanyabhimisetty@gmail.com
 
 # Run tests:
-sf apex run test --class-name ChatBotControllerTest --target-org venkatachaitanyabhimisetty@gmail.com --wait 1
+sf apex run test --class-names ChatBotControllerTest --target-org venkatachaitanyabhimisetty@gmail.com --wait 3
 ```
 
 ## Salesforce Org
@@ -94,7 +94,7 @@ This org edition does not support the `ApiKey` authentication protocol on Extern
 
 ## SF CLI Notes
 - **Partial deploys**: Use `--source-dir <path>` for single files, `--metadata` for type-level deploys
-- **Run tests**: `sf apex run test --class-name <class> --wait <minutes>`
+- **Run tests**: `sf apex run test --class-names <class> --wait <minutes>`
 - **`sfdx-project.json`**: Still the standard config file name — not renamed to `sf-project.json`
 
 ## LWC Architecture

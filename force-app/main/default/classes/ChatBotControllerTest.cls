@@ -145,16 +145,6 @@ private class ChatBotControllerTest {
         }
     }
 
-    class MultiMock implements HttpCalloutMock {
-        List<String> bodies; Integer i = 0;
-        MultiMock(String a, String b) { bodies = new List<String>{ a, b }; }
-        public HttpResponse respond(HttpRequest r) {
-            HttpResponse res = new HttpResponse();
-            res.setStatusCode(200); res.setBody(i < bodies.size() ? bodies[i] : bodies[bodies.size() - 1]);
-            i++; return res;
-        }
-    }
-
     class FailMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest r) {
             HttpResponse res = new HttpResponse();
