@@ -1,59 +1,44 @@
 # SF AI Agent — Salesforce AI Chatbot
 
-A multi-provider AI chatbot running as a Lightning Web Component inside a Salesforce Developer Edition org. Talks to your records via the **Salesforce Platform MCP Server** and reasons with **DeepSeek** or **OpenRouter**.
-
-![Stack](https://img.shields.io/badge/Salesforce-Developer%20Edition-blue) ![LWC](https://img.shields.io/badge/UI-LWC-7474f0) ![Apex](https://img.shields.io/badge/Backend-Apex-1798c1) ![AI](https://img.shields.io/badge/AI-DeepSeek%20%7C%20OpenRouter-green)
+A multi-provider AI chatbot running as a Lightning Web Component inside Salesforce.  
+Chat with your records via the **Salesforce Platform MCP Server** using **DeepSeek** or **OpenRouter**.
 
 ---
 
-## What It Does
+## What You Need
 
-Type a question — *"List my top 10 accounts"*, *"Create a contact on this record"*, *"Summarize open opportunities over 50K"* — and the bot:
+| Requirement | Details |
+|---|---|
+| **Salesforce Org** | Developer Edition (free) or any org with API access |
+| **SFDX CLI** | `sfdx` installed and authenticated to your org |
+| **DeepSeek API Key** | Get one at [platform.deepseek.com](https://platform.deepseek.com) — starts with `sk-` |
+| **OpenRouter API Key** *(optional)* | Get one at [openrouter.ai/keys](https://openrouter.ai/keys) — for fallback/free models |
 
-1. Sends your message to DeepSeek or OpenRouter with available MCP tools
-2. The LLM decides which tool to call (SOQL query, record create, schema describe, etc.)
-3. Apex executes the tool against the Salesforce Platform MCP server
-4. The LLM summarizes the result in plain language — streamed word-by-word
+---
 
-## Architecture
-
-```
-User (LWC) → Apex Controller → ChatBotService
-                                   ├── MCP Session (initialize → tools/list → tools/call)
-                                   └── AI Provider (DeepSeek / OpenRouter with SSE streaming)
-```
-
-- **Controller** (`ChatBotController.cls`, 220 lines) — `@AuraEnabled` entry points + conversation orchestration
-- **Service** (`ChatBotService.cls`, 470 lines) — MCP client, AI provider calls, SSE streaming parser, tool call parsing
-- **LWC** (`chatBot/`) — SLDS-inspired clean UI with provider/model selection, record context chips, search
-
-## Features
-
-- **Dual AI providers** — DeepSeek (`deepseek-chat`, `deepseek-reasoner`) and OpenRouter (8 models including free tier)
-- **Provider + model selectable in the UI** — defaults to DeepSeek
-- **Real-time tool calls** — each tool executes in its own round-trip, shown one-by-one with real timing
-- **SSE streaming** — AI responses type out word-by-word via server-sent events
-- **Conversation memory** — summarized context sent with each message
-- **Record context chips** — auto-adds the page record, + button to search and attach any record
-- **Multi-tool chain** — AI can query schema then create/update/delete in one request
-- **MCP protocol** — full `initialize → notifications/initialized → tools/list → tools/call` handshake
-- **Privacy** — hashed `user_id` sent to DeepSeek for KVCache isolation
-
-## Setup
-
-### Prerequisites
-- Salesforce Developer Edition org
-- SFDX CLI (`sfdx`) installed
-- DeepSeek API key (starts with `sk-`) and/or OpenRouter API key
+## Quick Start (5 Steps)
 
 ### 1. Enable MCP Server
-Setup → MCP Servers → `platform.sobject-all` → Confirm **Active** (default in Developer Edition)
+Setup → MCP Servers → `platform.sobject-all` → confirm **Active** (default in Developer Edition).
 
-### 2. External Client App + Auth Provider + Named Credential
-Follow the 3-step OAuth flow for MCP access (see [full setup guide](#mcp-auth-flow)):
-- External Client App with `mcp_api` scope
-- Auth Provider → Named Credential `Salesforce_MCP`
-- Verify "Authenticated" status
+### 2. Set Up MCP Auth (OAuth)
+This is the trickiest part. You need 3 things in sequence:
+
+**a) External Client App** — Setup → External Client Manager → New
+- Name: `SF MCP Auth`, API Name: `SF_MCP_Auth`
+- Enable OAuth, callback: `https://<your-instance>.my.salesforce.com/services/authcallback/SF_MCP_Auth`
+- Scopes: `api`, `refresh_token`, **`mcp_api`** ← easy to miss
+- Enable JWT-based access tokens
+
+**b) Auth Provider** — Setup → Auth Providers → New → Salesforce
+- Name: `SF_MCP_Auth`, Consumer Key/Secret from step (a)
+- Endpoints: `login.salesforce.com`
+
+**c) Named Credential** — Setup → Named Credentials → New
+- Label/Name: `Salesforce_MCP` (must match exactly)
+- URL: `https://api.salesforce.com`, Named Principal, OAuth 2.0
+- Auth Provider: `SF_MCP_Auth`, Scope: `api refresh_token mcp_api`
+- Start Auth Flow on Save → log in → verify "Authenticated"
 
 ### 3. Deploy
 ```bash
@@ -62,46 +47,71 @@ sfdx force:source:deploy -p force-app -u YOUR_ORG_ALIAS
 
 ### 4. Add API Keys
 Setup → Custom Metadata Types → **AI Provider Setting** → Manage Records → New:
-- Record 1: `MasterLabel` = `DeepSeek`, `Api_Key__c` = your key (starts with `sk-`)
-- Record 2: `MasterLabel` = `OpenRouter`, `Api_Key__c` = your key
 
-### 5. Add to Lightning Page
-Edit any Record Page → drag **chatBot** component → Save
+| MasterLabel | Api_Key__c |
+|---|---|
+| `DeepSeek` | `sk-your-deepseek-key` |
+| `OpenRouter` | `sk-or-v1-your-openrouter-key` |
 
-## MCP Auth Flow
+### 5. Add to Page
+Edit any Lightning Record Page → drag in the **chatBot** component → Save.  
+The bot auto-detects the current record as context.
 
-1. **External Client App** (Setup → External Client Manager → New): `SF MCP Auth`
-   - Enable OAuth, callback `https://<org>.my.salesforce.com/services/authcallback/SF_MCP_Auth`
-   - Scopes: `api`, `refresh_token`, **`mcp_api`** (easy to miss)
-   - Enable JWT-based access tokens
-2. **Auth Provider** (Setup → Auth Providers → New → Salesforce): `SF_MCP_Auth`
-   - Consumer Key/Secret from step 1, endpoints: `login.salesforce.com`
-3. **Named Credential** (Setup → Named Credentials → New): `Salesforce_MCP`
-   - URL: `https://api.salesforce.com`, Named Principal, OAuth 2.0
-   - Auth Provider: `SF_MCP_Auth`, Scope: `api refresh_token mcp_api`
+---
 
-## Project Structure
+## How It Works
 
 ```
-force-app/main/default/
-├── classes/
-│   ├── ChatBotController.cls        # Aura-enabled entry points
-│   ├── ChatBotService.cls           # MCP + AI implementation
-│   └── ChatBotControllerTest.cls    # Unit tests
-├── lwc/chatBot/
-│   ├── chatBot.html                 # LWC template
-│   ├── chatBot.js                   # UI logic, tool loop, streaming
-│   └── chatBot.css                  # Clean minimal styling
-├── objects/AI_Provider_Setting__mdt/ # CMDT for API keys
-└── remoteSiteSettings/              # Callout allowlisting
+You type: "List my top 10 accounts"
+     │
+     ▼
+LWC sends message → Apex builds prompt with MCP tools → DeepSeek/OpenRouter chooses tool
+     │
+     ▼
+Apex calls MCP server → SOQL query executes → result goes back to AI → AI writes plain-language summary
+     │
+     ▼
+Response streams word-by-word into the chat bubble
 ```
 
-## Key Lessons
+For the full architecture, see **[ARCHITECTURE.md](ARCHITECTURE.md)** — includes system diagram, message flow trace, credential paths, class diagram, MCP protocol handshake, and SSE streaming details.
 
-- `mcp_api` OAuth scope is non-obvious — add it upfront
-- MCP handshake is mandatory: `initialize` → `notifications/initialized` → then `tools/*`
-- Apex `getHeader('Mcp-Session-Id')` returns null — iterate keys case-insensitively
-- `UserInfo.getSessionId()` does NOT work for MCP — need real OAuth flow
+---
+
+## Features
+
+- **Dual AI** — DeepSeek (`deepseek-chat`, `deepseek-reasoner`) and OpenRouter (8 models including free tier)
+- **UI selectors** — pick provider and model from dropdowns above the input
+- **Streaming** — responses type out word-by-word (SSE parsed by Apex, rendered in LWC)
+- **Conversation memory** — summarized context sent with each message
+- **Record context** — auto-adds the page record as a chip; `+` to search and attach any record
+- **Multi-tool** — AI can query schema then create/update/delete in one request
+- **Tool cards** — each MCP tool call shown with name, args, expandable detail
+- **Privacy** — hashed user ID sent to DeepSeek for KVCache isolation
+
+---
+
+## Key Gotchas
+
+- The **`mcp_api`** OAuth scope is buried in the External Client App UI — missing it causes `401 Invalid token`
+- MCP handshake is **mandatory**: `initialize` → `notifications/initialized` → then `tools/*`
+- Apex `getHeader('Mcp-Session-Id')` returns `null` even when the header exists — iterate `getHeaderKeys()` case-insensitively
+- `UserInfo.getSessionId()` does **not** work for MCP API calls — you need a real OAuth flow
+- Apex static variables **do not persist** across `@AuraEnabled` calls — if you need multi-step state, handle it in a single transaction
+
+---
+
+## Security
+
+- DeepSeek/OpenRouter API keys stored in CMDT (never in source code)
+- MCP uses Named Credential with OAuth — token never visible in Apex
+- AI only *proposes* tool calls — Apex validates and forwards to MCP
+- MCP server enforces the authenticated user's object/field-level security
+- Two completely separate credentials: AI key ≠ MCP token
+
+See the full security audit for line-by-line trace of every credential, HTTP call, and token path.
+
+---
 
 ## License
 
