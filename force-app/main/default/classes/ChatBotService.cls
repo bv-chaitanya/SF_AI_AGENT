@@ -102,7 +102,6 @@ public with sharing class ChatBotService {
         aiModel = null;
         aiProvider = null;
         streamChunks = null;
-        providerConfigCache = null;
     }
 
     public static Boolean initMcp() {
@@ -206,44 +205,26 @@ public with sharing class ChatBotService {
         }
         if (tools != null && !tools.isEmpty()) { body.put('tools', tools); body.put('tool_choice', 'auto'); }
 
-        List<String> modelChain = isOpenRouter ? buildOpenRouterChain(model) : new List<String>{ model };
-        for (String m : modelChain) {
-            body.put('model', m);
-            try {
-                HttpResponse res = doAiPost(baseUrl + '/chat/completions', apiKey, body, isOpenRouter);
-                if (res.getStatusCode() >= 200 && res.getStatusCode() < 300) {
-                    if (useStream) {
-                        List<String> chunks = parseStreamChunks(res.getBody());
-                        String answer = joinChunks(chunks);
-                        if (String.isNotBlank(answer)) {
-                            aiModel = m; aiProvider = provider; streamChunks = chunks; return answer;
-                        }
-                        lastAiError = m + ' empty';
-                    } else if (String.isNotBlank(extractContentOrNull(res.getBody()))
-                        || !parseAllNative(res.getBody()).isEmpty()) {
-                        aiModel = m; aiProvider = provider; return res.getBody();
+        try {
+            HttpResponse res = doAiPost(baseUrl + '/chat/completions', apiKey, body, isOpenRouter);
+            if (res.getStatusCode() >= 200 && res.getStatusCode() < 300) {
+                if (useStream) {
+                    List<String> chunks = parseStreamChunks(res.getBody());
+                    String answer = joinChunks(chunks);
+                    if (String.isNotBlank(answer)) {
+                        aiModel = model; aiProvider = provider; streamChunks = chunks; return answer;
                     }
-                    lastAiError = m + ' empty';
-                } else {
-                    lastAiError = m + ' HTTP ' + res.getStatusCode() + fmtErr(res.getBody());
+                    lastAiError = model + ' empty';
+                } else if (String.isNotBlank(extractContentOrNull(res.getBody()))
+                    || !parseAllNative(res.getBody()).isEmpty()) {
+                    aiModel = model; aiProvider = provider; return res.getBody();
                 }
-            } catch (Exception e) { lastAiError = m + ': ' + e.getMessage(); }
-        }
+                lastAiError = model + ' empty';
+            } else {
+                lastAiError = model + ' HTTP ' + res.getStatusCode() + fmtErr(res.getBody());
+            }
+        } catch (Exception e) { lastAiError = model + ': ' + e.getMessage(); }
         return null;
-    }
-
-    private static List<String> buildOpenRouterChain(String model) {
-        List<String> freeModels = new List<String>{
-            'nex-agi/nex-n2-pro:free',
-            'nvidia/nemotron-3-super-120b-a12b:free',
-            'google/gemma-4-31b-it:free',
-            'openrouter/free'
-        };
-        Integer idx = freeModels.indexOf(model);
-        if (idx < 0) return new List<String>{ model };
-        List<String> chain = new List<String>();
-        for (Integer i = idx; i < freeModels.size(); i++) chain.add(freeModels[i]);
-        return chain;
     }
 
     public static List<McpToolCall> parseAllToolCalls(String responseBody) {

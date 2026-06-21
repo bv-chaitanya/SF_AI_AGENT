@@ -20,6 +20,7 @@ public with sharing class ChatBotController {
         ChatBotService.ChatResponse r = new ChatBotService.ChatResponse();
         r.answer = answer; r.usedTool = true;
         r.model = ChatBotService.aiModel; r.provider = ChatBotService.aiProvider;
+        r.streamChunks = ChatBotService.streamChunks;
         return r;
     }
 
@@ -130,16 +131,23 @@ public with sharing class ChatBotController {
             }
         }
 
-        String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, null);
-        if (body == null && !ChatBotService.executedTools.isEmpty()) {
-            List<Map<String, Object>> condensed = new List<Map<String, Object>>();
-            condensed.add(ChatBotService.msg('system', 'Salesforce assistant. Summarize the tool results for the user. Keep replies brief.'));
-            condensed.add(ChatBotService.msg('user', userMessage));
-            String toolData = ChatBotService.buildToolSummary();
-            if (String.isNotBlank(toolData)) condensed.add(ChatBotService.msg('system', 'Tool results:\n' + toolData));
-            body = ChatBotService.callAi(provider, model, apiKey, baseUrl, condensed, null);
+        Boolean useCondensed = ChatBotService.executedTools.size() >= 2;
+        String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, useCondensed ? buildCondensedMsgs(userMessage) : msgs, null);
+        if (body == null && useCondensed) {
+            body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, null);
+        } else if (body == null && !ChatBotService.executedTools.isEmpty()) {
+            body = ChatBotService.callAi(provider, model, apiKey, baseUrl, buildCondensedMsgs(userMessage), null);
         }
         return body != null ? ChatBotService.extractContent(body) : 'AI unavailable: ' + ChatBotService.lastAiError;
+    }
+
+    private static List<Map<String, Object>> buildCondensedMsgs(String userMessage) {
+        List<Map<String, Object>> condensed = new List<Map<String, Object>>();
+        condensed.add(ChatBotService.msg('system', 'Salesforce assistant. Summarize the tool results for the user. Keep replies brief.'));
+        condensed.add(ChatBotService.msg('user', userMessage));
+        String toolData = ChatBotService.buildToolSummary();
+        if (String.isNotBlank(toolData)) condensed.add(ChatBotService.msg('system', 'Tool results:\n' + toolData));
+        return condensed;
     }
 
     private static String summarize(String recordId, String provider, String model) {
