@@ -31,8 +31,11 @@ public with sharing class ChatBotService {
     public static List<Map<String, Object>> activeMessages;
     public static String activeProvider;
     public static String activeModel;
-    public static String activeApiKey;
     public static List<Object> activeTools;
+    private static String activeApiKey;
+
+    public static void setActiveApiKey(String key) { activeApiKey = key; }
+    public static String getActiveApiKey() { return activeApiKey; }
     public static String aiModel;
     public static String aiProvider;
     public static List<String> streamChunks;

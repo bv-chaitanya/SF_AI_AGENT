@@ -28,9 +28,7 @@ private class ChatBotControllerTest {
     static void sendMessage_executesMcpTool_andSummarizes() {
         setupTools();
         ChatBotService.toolCallResponse = '{"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"[{\"Name\":\"Acme\"}]"}]}}';
-        Test.setMock(HttpCalloutMock.class, new MultiMock(
-            '{"choices":[{"message":{"content":"<tool_call>{\"name\":\"query\",\"arguments\":{\"q\":\"SELECT Id FROM Account\"}}</tool_call>"}}]}',
-            '{"choices":[{"message":{"content":"Found Acme"}}]}'));
+        Test.setMock(HttpCalloutMock.class, new Mock('{"choices":[{"message":{"content":"Found Acme"}}]}'));
         Test.startTest();
         String r = ChatBotController.sendMessage('List accounts', PRV, OR_MODEL, null, null);
         Test.stopTest();

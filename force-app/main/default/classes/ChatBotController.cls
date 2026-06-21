@@ -2,7 +2,16 @@ public with sharing class ChatBotController {
 
     @AuraEnabled
     public static String sendMessage(String userMessage, String provider, String model, String conversationSummary, String contextRecordsJson) {
-        return initChat(userMessage, null, provider, model, conversationSummary, contextRecordsJson);
+        String jsonResp = initChat(userMessage, null, provider, model, conversationSummary, contextRecordsJson);
+        for (Integer i = 0; i < 5; i++) {
+            Map<String, Object> step = (Map<String, Object>) JSON.deserializeUntyped(jsonResp);
+            String type = (String) step.get('type');
+            if (type == 'answer' || type == 'error') return (String) step.get('text');
+            String toolName = (String) step.get('toolName');
+            String toolResult = (String) step.get('toolResult');
+            jsonResp = continueChat(toolName, toolResult);
+        }
+        return 'Action completed.';
     }
 
     @AuraEnabled
@@ -102,18 +111,20 @@ public with sharing class ChatBotController {
         ChatBotService.activeProvider = provider;
         ChatBotService.activeModel = model;
 
-        if (String.isBlank(userMessage)) return '{"type":"error","text":"Please enter a message."}';
+        if (String.isBlank(userMessage))
+            return JSON.serialize(new Map<String, Object>{'type' => 'error', 'text' => 'Please enter a message.'});
 
         String apiKey = ChatBotService.getApiKey(provider);
-        if (apiKey == null) return '{"type":"error","text":"' + provider + ' API key not configured."}';
-        ChatBotService.activeApiKey = apiKey;
+        if (apiKey == null)
+            return JSON.serialize(new Map<String, Object>{'type' => 'error', 'text' => provider + ' API key not configured.'});
+        ChatBotService.setActiveApiKey(apiKey);
 
         if (!ChatBotService.initMcp())
-            return '{"type":"error","text":"MCP init failed"}';
+            return JSON.serialize(new Map<String, Object>{'type' => 'error', 'text' => 'MCP init failed'});
 
         ChatBotService.activeTools = ChatBotService.getTools();
         if (ChatBotService.activeTools == null)
-            return '{"type":"error","text":"Could not retrieve MCP tools."}';
+            return JSON.serialize(new Map<String, Object>{'type' => 'error', 'text' => 'Could not retrieve MCP tools.'});
 
         List<Map<String, Object>> msgs = ChatBotService.activeMessages;
         msgs.add(ChatBotService.msg('system',
@@ -166,18 +177,22 @@ public with sharing class ChatBotController {
     private static String callAndCheck() {
         List<Map<String, Object>> msgs = ChatBotService.activeMessages;
         String body = ChatBotService.callAi(ChatBotService.activeProvider, ChatBotService.activeModel,
-            ChatBotService.activeApiKey, msgs, ChatBotService.activeTools);
+            ChatBotService.getActiveApiKey(), msgs, ChatBotService.activeTools);
         if (body == null)
-            return '{"type":"answer","text":"AI unavailable."}';
+            return JSON.serialize(new Map<String, Object>{
+                'type' => 'answer', 'text' => 'AI unavailable.' });
 
         List<ChatBotService.McpToolCall> toolCalls = ChatBotService.parseAllToolCalls(body);
         if (toolCalls.isEmpty()) {
             String answer = ChatBotService.extractContent(body);
             ChatBotService.aiModel = ChatBotService.activeModel;
             ChatBotService.aiProvider = ChatBotService.activeProvider;
-            return '{"type":"answer","text":' + JSON.serialize(answer)
-                + ',"model":"' + ChatBotService.aiModel + '","provider":"' + ChatBotService.aiProvider
-                + '","streamChunks":' + JSON.serialize(ChatBotService.streamChunks) + '}';
+            return JSON.serialize(new Map<String, Object>{
+                'type' => 'answer', 'text' => answer,
+                'model' => ChatBotService.aiModel,
+                'provider' => ChatBotService.aiProvider,
+                'streamChunks' => ChatBotService.streamChunks
+            });
         }
 
         ChatBotService.McpToolCall tc = toolCalls[0];
@@ -205,15 +220,17 @@ public with sharing class ChatBotController {
         ChatBotService.executedTools.add(new Map<String, String>{
             'name' => tc.name, 'arguments' => (String) JSON.serialize(tc.arguments) });
 
-        return '{"type":"tool","toolName":' + JSON.serialize(tc.name)
-            + ',"toolArgs":' + JSON.serialize(tc.arguments)
-            + ',"toolResult":' + JSON.serialize(result) + '}';
+        return JSON.serialize(new Map<String, Object>{
+            'type' => 'tool',
+            'toolName' => tc.name,
+            'toolArgs' => tc.arguments,
+            'toolResult' => result
+        });
     }
 
     private static ChatBotService.ChatResponse buildFromJson(String jsonText) {
         Map<String, Object> step = (Map<String, Object>) JSON.deserializeUntyped(jsonText);
         ChatBotService.ChatResponse r = new ChatBotService.ChatResponse();
-        String type = (String) step.get('type');
         r.answer = (String) step.get('text');
         r.model = (String) step.get('model');
         r.provider = (String) step.get('provider');
@@ -221,6 +238,11 @@ public with sharing class ChatBotController {
         r.toolName = (String) step.get('toolName');
         r.usedTool = !ChatBotService.executedTools.isEmpty();
         return r;
+    }
+
+    private static String extractTextFromChatJson(String jsonText) {
+        Map<String, Object> step = (Map<String, Object>) JSON.deserializeUntyped(jsonText);
+        return (String) step.get('text');
     }
 
     private static String summarize(String recordId, String provider, String model) {
