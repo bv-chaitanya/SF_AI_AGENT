@@ -28,6 +28,14 @@ All API keys stored in a single CMDT: `AI_Provider_Setting__mdt`. Create one rec
 ### DeepSeek
 - **API key**: CMDT record with MasterLabel `DeepSeek` — key starts with `sk-`
 - **Models**: `deepseek-chat` (fast/Flash), `deepseek-reasoner` (R1 reasoning)
+
+### TODO: Upgrade to Named Credentials
+When org upgrades to API v64+, replace CMDT key storage with Named Credentials (ApiKey protocol). Create `DeepSeek_API` and `OpenRouter_API` NCs with:
+- Protocol: **API Key**
+- Generate Authorization Header: true  
+- API Key: `Bearer sk-xxx`
+- Apex: use `callout:DeepSeek_API` / `callout:OpenRouter_API`
+- Remove `lookupApiKey()` and `Authorization` header from `doAiPost()`
 - **Timeout**: 12s per callout
 
 ## Salesforce Platform MCP Server (platform.sobject-all)
