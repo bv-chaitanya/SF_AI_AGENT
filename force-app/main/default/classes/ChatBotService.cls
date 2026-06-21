@@ -27,6 +27,7 @@ public with sharing class ChatBotService {
     public static String executedToolName;
     public static String executedToolArguments;
     public static List<Map<String, String>> executedTools = new List<Map<String, String>>();
+    public static List<String> toolResults = new List<String>();
     public static String aiModel;
     public static String aiProvider;
     public static List<String> streamChunks;
@@ -97,6 +98,7 @@ public with sharing class ChatBotService {
         executedToolName = null;
         executedToolArguments = null;
         executedTools.clear();
+        toolResults.clear();
         aiModel = null;
         aiProvider = null;
         streamChunks = null;
@@ -281,6 +283,16 @@ public with sharing class ChatBotService {
         return text.length() > maxLen ? text.substring(0, maxLen) + '\n...(truncated)' : text;
     }
 
+    public static String buildToolSummary() {
+        if (toolResults.isEmpty()) return null;
+        List<String> parts = new List<String>();
+        for (Integer i = 0; i < executedTools.size() && i < toolResults.size(); i++) {
+            Map<String, String> tool = executedTools[i];
+            parts.add(tool.get('name') + ' → ' + truncate(toolResults[i], 3000));
+        }
+        return String.join(parts, '\n\n');
+    }
+
     private static Map<String, Object> buildRpc(String method, Map<String, Object> params) {
         Map<String, Object> rpc = new Map<String, Object>();
         rpc.put('jsonrpc', '2.0');
@@ -430,7 +442,7 @@ public with sharing class ChatBotService {
             for (Object t : tools) {
                 Map<String, Object> tool = (Map<String, Object>) t;
                 String d = (String) tool.get('description');
-                if (d != null && d.length() > 1200) d = d.substring(0, 1200);
+                if (d != null && d.length() > 500) d = d.substring(0, 500);
                 Object schema = tool.get('inputSchema');
                 if (schema == null) schema = new Map<String, Object>{ 'type' => 'object' };
                 result.add(new Map<String, Object>{

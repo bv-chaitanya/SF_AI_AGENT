@@ -111,7 +111,7 @@ public with sharing class ChatBotController {
 
         for (Integer turn = 0; turn < 5; turn++) {
             String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, tools);
-            if (body == null) return 'AI unavailable: ' + ChatBotService.lastAiError;
+            if (body == null) break;
 
             List<ChatBotService.McpToolCall> tcs = ChatBotService.parseAllToolCalls(body);
             if (tcs.isEmpty()) return ChatBotService.extractContent(body);
@@ -123,14 +123,23 @@ public with sharing class ChatBotController {
                 ChatBotService.executedToolName = tc.name;
                 ChatBotService.executedToolArguments = JSON.serialize(tc.arguments);
                 ChatBotService.executedTools.add(new Map<String, String>{'name' => tc.name, 'arguments' => JSON.serialize(tc.arguments) });
+                ChatBotService.toolResults.add(result);
 
                 msgs.add(new Map<String, Object>{'role' => 'assistant', 'content' => null, 'tool_calls' => new List<Map<String, Object>>{ new Map<String, Object>{'id' => tc.id, 'type' => 'function', 'function' => new Map<String, Object>{'name' => tc.name, 'arguments' => JSON.serialize(tc.arguments) } } } });
-                msgs.add(new Map<String, Object>{'role' => 'tool', 'tool_call_id' => tc.id, 'content' => ChatBotService.truncate(result, 8000) });
+                msgs.add(new Map<String, Object>{'role' => 'tool', 'tool_call_id' => tc.id, 'content' => ChatBotService.truncate(result, 4000) });
             }
         }
 
         String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, null);
-        return body != null ? ChatBotService.extractContent(body) : 'Action completed but AI could not summarize. Error: ' + ChatBotService.lastAiError;
+        if (body == null && !ChatBotService.executedTools.isEmpty()) {
+            List<Map<String, Object>> condensed = new List<Map<String, Object>>();
+            condensed.add(ChatBotService.msg('system', 'Salesforce assistant. Summarize the tool results for the user. Keep replies brief.'));
+            condensed.add(ChatBotService.msg('user', userMessage));
+            String toolData = ChatBotService.buildToolSummary();
+            if (String.isNotBlank(toolData)) condensed.add(ChatBotService.msg('system', 'Tool results:\n' + toolData));
+            body = ChatBotService.callAi(provider, model, apiKey, baseUrl, condensed, null);
+        }
+        return body != null ? ChatBotService.extractContent(body) : 'AI unavailable: ' + ChatBotService.lastAiError;
     }
 
     private static String summarize(String recordId, String provider, String model) {
