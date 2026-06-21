@@ -6,9 +6,9 @@ private class ChatBotControllerTest {
 
     @isTest
     static void sendMessage_returnsConfigError_whenNoApiKey() {
-        ChatBotService.apiKeyOverride = null;
-        ChatBotService.lastMcpError = null;
-        ChatBotService.mcpSessionIdOverride = 'test-session';
+        ChatBotService.testProviderConfigs = new Map<String, ChatBotService.ProviderConfig>{
+            PRV => new ChatBotService.ProviderConfig(null, null)
+        };
         Test.startTest();
         String r = ChatBotController.sendMessage('Hello', PRV, OR_MODEL, null, null);
         Test.stopTest();
@@ -81,6 +81,9 @@ private class ChatBotControllerTest {
 
     @isTest
     static void sendMessage_usesDeepSeekProvider() {
+        ChatBotService.testProviderConfigs = new Map<String, ChatBotService.ProviderConfig>{
+            'DeepSeek' => new ChatBotService.ProviderConfig('test-key', 'https://api.test.com')
+        };
         setupTools();
         Test.setMock(HttpCalloutMock.class, new Mock('{"choices":[{"message":{"content":"DS says hi"}}]}'));
         Test.startTest();
@@ -91,6 +94,9 @@ private class ChatBotControllerTest {
 
     @isTest
     static void sendMessage_usesNeuralwattProvider() {
+        ChatBotService.testProviderConfigs = new Map<String, ChatBotService.ProviderConfig>{
+            'Neuralwatt' => new ChatBotService.ProviderConfig('test-key', 'https://api.test.com')
+        };
         setupTools();
         Test.setMock(HttpCalloutMock.class, new Mock('{"choices":[{"message":{"content":"NW says hi"}}]}'));
         Test.startTest();
@@ -121,7 +127,12 @@ private class ChatBotControllerTest {
     }
 
     private static void setupTools() {
-        ChatBotService.apiKeyOverride = 'test-key';
+        if (ChatBotService.testProviderConfigs == null) {
+            ChatBotService.testProviderConfigs = new Map<String, ChatBotService.ProviderConfig>();
+        }
+        if (!ChatBotService.testProviderConfigs.containsKey(PRV)) {
+            ChatBotService.testProviderConfigs.put(PRV, new ChatBotService.ProviderConfig('test-key', 'https://api.test.com'));
+        }
         ChatBotService.mcpSessionIdOverride = 'test-session';
         ChatBotService.toolsListResponse = '{"jsonrpc":"2.0","result":{"tools":[{"name":"query","description":"Query","inputSchema":{"type":"object"}}]}}';
     }

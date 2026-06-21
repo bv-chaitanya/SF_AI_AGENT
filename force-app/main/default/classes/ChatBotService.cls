@@ -5,6 +5,7 @@ public with sharing class ChatBotService {
     private static final Integer AI_TIMEOUT = 12000;
 
     @TestVisible public static String apiKeyOverride;
+    @TestVisible public static String baseUrlOverride;
     @TestVisible public static Map<String, List<String>> testModelsMap;
     @TestVisible public static String toolsListResponse;
     @TestVisible public static String toolCallResponse;
@@ -16,7 +17,14 @@ public with sharing class ChatBotService {
     private static String sessionId;
     private static String cachedToolsJson;
     private static List<Object> cachedTools;
-    private static Map<String, String> apiKeyCache;
+    private static Map<String, ProviderConfig> providerConfigCache;
+    @TestVisible public static Map<String, ProviderConfig> testProviderConfigs;
+
+    public class ProviderConfig {
+        @TestVisible public String apiKey;
+        @TestVisible public String baseUrl;
+        public ProviderConfig(String key, String url) { apiKey = key; baseUrl = url; }
+    }
 
     public static String executedToolName;
     public static String executedToolArguments;
@@ -33,34 +41,47 @@ public with sharing class ChatBotService {
     public static String aiProvider;
     public static List<String> streamChunks;
 
-    private static String providerEndpoint(String provider, String suffix) {
-        String ncName = provider.replaceAll('[^A-Za-z0-9]', '') + '_API';
-        return 'callout:' + ncName + suffix;
+    public static ProviderConfig getProviderConfig(String provider) {
+        if (providerConfigCache != null && providerConfigCache.containsKey(provider)) {
+            return providerConfigCache.get(provider);
+        }
+        ProviderConfig config;
+        if (apiKeyOverride != null) {
+            config = new ProviderConfig(apiKeyOverride, baseUrlOverride != null ? baseUrlOverride : 'https://api.test.com');
+        } else if (testProviderConfigs != null && testProviderConfigs.containsKey(provider)) {
+            config = testProviderConfigs.get(provider);
+        } else {
+            List<AI_Provider_Setting__mdt> settings = [
+                SELECT Api_Key__c, Base_Url__c FROM AI_Provider_Setting__mdt
+                WHERE MasterLabel = :provider AND Is_Active__c = true LIMIT 1
+            ];
+            if (settings.isEmpty()) {
+                config = null;
+            } else {
+                config = new ProviderConfig(settings[0].Api_Key__c, settings[0].Base_Url__c);
+            }
+        }
+        if (providerConfigCache == null) providerConfigCache = new Map<String, ProviderConfig>();
+        providerConfigCache.put(provider, config);
+        return config;
     }
 
     public static String lookupApiKey(String provider) {
-        if (apiKeyCache != null && apiKeyCache.containsKey(provider)) return apiKeyCache.get(provider);
-        String key;
-        if (apiKeyOverride != null) {
-            key = apiKeyOverride;
-        } else {
-            List<AI_Provider_Setting__mdt> settings = [
-                SELECT Api_Key__c FROM AI_Provider_Setting__mdt
-                WHERE MasterLabel = :provider AND Is_Active__c = true LIMIT 1
-            ];
-            key = settings.isEmpty() ? null : settings[0].Api_Key__c;
-        }
-        if (apiKeyCache == null) apiKeyCache = new Map<String, String>();
-        apiKeyCache.put(provider, key);
-        return key;
+        ProviderConfig config = getProviderConfig(provider);
+        return config != null ? config.apiKey : null;
     }
 
-    public static List<String> fetchModelsList(String provider, String apiKey) {
+    public static String lookupBaseUrl(String provider) {
+        ProviderConfig config = getProviderConfig(provider);
+        return config != null ? config.baseUrl : null;
+    }
+
+    public static List<String> fetchModelsList(String baseUrl, String apiKey) {
         List<String> models = new List<String>();
-        if (String.isBlank(apiKey)) return models;
+        if (String.isBlank(baseUrl) || String.isBlank(apiKey)) return models;
         try {
             HttpRequest req = new HttpRequest();
-            req.setEndpoint(providerEndpoint(provider, '/models'));
+            req.setEndpoint(baseUrl + '/models');
             req.setMethod('GET');
             req.setHeader('Authorization', 'Bearer ' + apiKey);
             req.setHeader('Accept', 'application/json');
@@ -101,7 +122,7 @@ public with sharing class ChatBotService {
         aiModel = null;
         aiProvider = null;
         streamChunks = null;
-        apiKeyCache = null;
+        providerConfigCache = null;
     }
 
     public static Boolean initMcp() {
@@ -187,12 +208,12 @@ public with sharing class ChatBotService {
         } catch (Exception e) { return jsonStr; }
     }
 
-    public static String callAi(String provider, String model, String apiKey,
+    public static String callAi(String provider, String model, String apiKey, String baseUrl,
             List<Map<String, Object>> messages, List<Object> tools) {
-        return callOpenAiCompatible(provider, model, apiKey, messages, tools);
+        return callOpenAiCompatible(provider, model, apiKey, baseUrl, messages, tools);
     }
 
-    private static String callOpenAiCompatible(String provider, String model, String apiKey,
+    private static String callOpenAiCompatible(String provider, String model, String apiKey, String baseUrl,
             List<Map<String, Object>> messages, List<Object> tools) {
         lastAiError = null;
         Boolean useStream = (tools == null || tools.isEmpty());
@@ -214,7 +235,7 @@ public with sharing class ChatBotService {
         for (String m : modelChain) {
             body.put('model', m);
             try {
-                HttpResponse res = doAiPost(providerEndpoint(provider, '/chat/completions'), apiKey, body, isOpenRouter);
+                HttpResponse res = doAiPost(baseUrl + '/chat/completions', apiKey, body, isOpenRouter);
                 if (res.getStatusCode() >= 200 && res.getStatusCode() < 300) {
                     if (useStream) {
                         List<String> chunks = parseStreamChunks(res.getBody());

@@ -4,7 +4,11 @@
     <protected>false</protected>
     <values>
         <field>Api_Key__c</field>
-        <value xsi:type="xsd:string"></value>
+        <value xsi:nil="true"/>
+    </values>
+    <values>
+        <field>Base_Url__c</field>
+        <value xsi:type="xsd:string">https://api.deepseek.com</value>
     </values>
     <values>
         <field>Is_Active__c</field>

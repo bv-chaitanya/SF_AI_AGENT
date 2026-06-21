@@ -62,12 +62,12 @@ public with sharing class ChatBotController {
         Map<String, Object> result = new Map<String, Object>();
         try {
             for (AI_Provider_Setting__mdt s : [
-                SELECT MasterLabel, Api_Key__c
+                SELECT MasterLabel, Api_Key__c, Base_Url__c
                 FROM AI_Provider_Setting__mdt
                 WHERE Is_Active__c = true
             ]) {
-                if (String.isBlank(s.Api_Key__c)) continue;
-                List<String> models = ChatBotService.fetchModelsList(s.MasterLabel, s.Api_Key__c);
+                if (String.isBlank(s.Base_Url__c) || String.isBlank(s.Api_Key__c)) continue;
+                List<String> models = ChatBotService.fetchModelsList(s.Base_Url__c, s.Api_Key__c);
                 if (!models.isEmpty()) result.put(s.MasterLabel, models);
             }
         } catch (Exception e) { }
@@ -84,8 +84,11 @@ public with sharing class ChatBotController {
     private static String processMessage(String userMessage, String recordId, String provider, String model, String conversationSummary, String contextRecordsJson) {
         if (String.isBlank(userMessage)) return 'Please enter a message.';
 
-        String apiKey = ChatBotService.lookupApiKey(provider);
+        ChatBotService.ProviderConfig config = ChatBotService.getProviderConfig(provider);
+        String apiKey = config != null ? config.apiKey : null;
+        String baseUrl = config != null ? config.baseUrl : null;
         if (String.isBlank(apiKey)) return provider + ' API key not configured. Set Api_Key__c on the AI_Provider_Setting__mdt record in Setup.';
+        if (String.isBlank(baseUrl)) return provider + ' Base URL not configured. Set Base_Url__c on the AI_Provider_Setting__mdt record in Setup.';
 
         if (!ChatBotService.initMcp()) return 'MCP init failed: ' + ChatBotService.lastMcpError;
 
@@ -106,7 +109,7 @@ public with sharing class ChatBotController {
         msgs.add(ChatBotService.msg('user', userMessage));
 
         for (Integer turn = 0; turn < 5; turn++) {
-            String body = ChatBotService.callAi(provider, model, apiKey, msgs, tools);
+            String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, tools);
             if (body == null) return 'AI unavailable.';
 
             List<ChatBotService.McpToolCall> tcs = ChatBotService.parseAllToolCalls(body);
@@ -125,7 +128,7 @@ public with sharing class ChatBotController {
             }
         }
 
-        String body = ChatBotService.callAi(provider, model, apiKey, msgs, null);
+        String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, null);
         return body != null ? ChatBotService.extractContent(body) : 'Action completed.';
     }
 
@@ -133,8 +136,11 @@ public with sharing class ChatBotController {
         String vid = ChatBotService.normalizeRecordId(recordId);
         if (vid == null) return 'Open on a record page to summarize.';
         String obj = ChatBotService.getObjectApiName(vid);
-        String apiKey = ChatBotService.lookupApiKey(provider);
+        ChatBotService.ProviderConfig config = ChatBotService.getProviderConfig(provider);
+        String apiKey = config != null ? config.apiKey : null;
+        String baseUrl = config != null ? config.baseUrl : null;
         if (String.isBlank(apiKey)) return 'API key not configured.';
+        if (String.isBlank(baseUrl)) return provider + ' Base URL not configured.';
         if (!ChatBotService.initMcp()) return 'MCP init failed.';
 
         Map<String, Object> p = new Map<String, Object>{'name' => 'soqlQuery', 'arguments' => new Map<String, Object>{'q' => 'SELECT FIELDS(ALL) FROM ' + obj + ' WHERE Id = \'' + vid + '\' LIMIT 1' }};
@@ -144,7 +150,7 @@ public with sharing class ChatBotController {
         List<Map<String, Object>> msgs = new List<Map<String, Object>>();
         msgs.add(ChatBotService.msg('system', 'Summarize this ' + obj + ' concisely.'));
         msgs.add(ChatBotService.msg('user', 'Data:\n' + tr));
-        String body = ChatBotService.callAi(provider, model, apiKey, msgs, null);
+        String body = ChatBotService.callAi(provider, model, apiKey, baseUrl, msgs, null);
         return body != null ? ChatBotService.extractContent(body) : 'Tool result: ' + tr;
     }
 
